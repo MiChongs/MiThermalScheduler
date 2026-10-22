@@ -45,7 +45,8 @@ export function exec(cmd) {
       },
     };
     try {
-      window.ksu.spawn('sh', JSON.stringify(['-c', cmd]), '{}', name);
+      // KernelSU 会把 command 与 args 以空格拼接后交给 shell 执行，因此整条命令放在 command 中
+      window.ksu.spawn(cmd, '[]', '{}', name);
     } catch {
       delete window[name];
       execBlocking(cmd).then(resolve);

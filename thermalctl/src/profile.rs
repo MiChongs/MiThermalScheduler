@@ -118,7 +118,20 @@ impl Default for Guard {
     }
 }
 
-/// 应用刷新率规则：列表中的应用位于前台时，将系统刷新率上限锁定为 rate
+/// 应用配置：列表中的应用位于前台时切换到指定方案，并可锁定刷新率上限
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+#[serde(default, rename_all = "camelCase")]
+pub struct AppRule {
+    pub id: String,
+    pub enabled: bool,
+    pub packages: Vec<String>,
+    /// 前台时使用的方案，空字符串表示不切换方案
+    pub profile: String,
+    /// 刷新率上限（Hz），0 表示不锁定
+    pub refresh: u32,
+}
+
+/// 旧版应用刷新率规则（v2.2），加载时迁移为应用配置
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
 #[serde(default, rename_all = "camelCase")]
 pub struct RefreshRule {
@@ -131,9 +144,11 @@ pub struct RefreshRule {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(default, rename_all = "camelCase")]
 pub struct RefreshConfig {
+    /// 应用配置中的刷新率锁定总开关
     pub enabled: bool,
     /// 过热保护触发时暂停锁定，交还系统控制
     pub respect_guard: bool,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub rules: Vec<RefreshRule>,
 }
 
@@ -240,8 +255,12 @@ pub struct Config {
     /// 默认方案
     pub active: String,
     pub profiles: Vec<Profile>,
+    /// 场景规则开关
     pub automation: bool,
+    /// 场景规则（充电 / 熄屏 / 低电量 / 高温）
     pub rules: Vec<AutoRule>,
+    /// 应用配置
+    pub apps: Vec<AppRule>,
     pub guard: Guard,
     /// 对覆盖文件设置 chattr +i
     pub immutable: bool,
@@ -261,6 +280,7 @@ impl Default for Config {
             profiles: Vec::new(),
             automation: true,
             rules: Vec::new(),
+            apps: Vec::new(),
             guard: Guard::default(),
             immutable: true,
             interval: 2000,
@@ -350,10 +370,55 @@ pub fn builtins() -> Vec<Profile> {
 impl Config {
     pub fn load() -> Config {
         let Ok(text) = fs::read_to_string(paths::CONFIG) else { return Config::default() };
-        match serde_json::from_str::<Config>(&text) {
+        let mut cfg = match serde_json::from_str::<Config>(&text) {
             Ok(c) if c.version >= 2 => c,
             _ => migrate_v1(&text).unwrap_or_default(),
+        };
+        if cfg.normalize() {
+            // 旧格式迁移后立即写回，避免每次加载重复迁移
+            let _ = cfg.save();
         }
+        cfg
+    }
+
+    /// 将 v2.2 及以前的「按应用」场景规则与应用刷新率规则合并为应用配置
+    pub fn normalize(&mut self) -> bool {
+        fn merge(apps: &mut Vec<AppRule>, id: &str, enabled: bool, packages: &[String], profile: Option<&str>, refresh: Option<u32>) {
+            let mut key: Vec<&String> = packages.iter().collect();
+            key.sort();
+            let found = apps.iter_mut().find(|a| {
+                let mut k: Vec<&String> = a.packages.iter().collect();
+                k.sort();
+                k == key
+            });
+            let app = match found {
+                Some(a) => a,
+                None => {
+                    apps.push(AppRule { id: id.to_string(), enabled, packages: packages.to_vec(), ..Default::default() });
+                    apps.last_mut().unwrap()
+                }
+            };
+            if let Some(p) = profile {
+                app.profile = p.to_string();
+            }
+            if let Some(r) = refresh {
+                app.refresh = r;
+            }
+            app.enabled |= enabled;
+        }
+        let legacy_app: Vec<AutoRule> = self.rules.iter().filter(|r| r.kind == TriggerKind::App).cloned().collect();
+        let legacy_refresh = std::mem::take(&mut self.refresh.rules);
+        if legacy_app.is_empty() && legacy_refresh.is_empty() {
+            return false;
+        }
+        self.rules.retain(|r| r.kind != TriggerKind::App);
+        for r in &legacy_app {
+            merge(&mut self.apps, &r.id, r.enabled, &r.packages, Some(&r.profile), None);
+        }
+        for r in &legacy_refresh {
+            merge(&mut self.apps, &r.id, r.enabled, &r.packages, None, Some(r.rate));
+        }
+        true
     }
 
     pub fn save(&self) -> Result<()> {
@@ -381,12 +446,15 @@ impl Config {
                 bail!("自动化规则引用了不存在的方案「{}」", r.profile);
             }
         }
-        for r in self.refresh.rules.iter().filter(|r| r.enabled) {
-            if !(24..=240).contains(&r.rate) {
-                bail!("刷新率 {} Hz 超出有效范围", r.rate);
+        for a in &self.apps {
+            if a.packages.is_empty() {
+                bail!("应用配置未选择应用");
             }
-            if r.packages.is_empty() {
-                bail!("应用刷新率规则未选择应用");
+            if !a.profile.is_empty() && self.find(&a.profile).is_none() {
+                bail!("应用配置引用了不存在的方案「{}」", a.profile);
+            }
+            if a.refresh != 0 && !(24..=240).contains(&a.refresh) {
+                bail!("刷新率 {} Hz 超出有效范围", a.refresh);
             }
         }
         if !(0.0..=10.0).contains(&self.charge.offset) {
@@ -571,7 +639,8 @@ pub fn build_all(profile: &Profile, stock: &Stock) -> BTreeMap<String, String> {
 
 pub fn read_config_file(path: &str) -> Result<Config> {
     let text = fs::read_to_string(path).with_context(|| format!("读取 {path} 失败"))?;
-    let cfg: Config = serde_json::from_str(&text).context("配置格式错误")?;
+    let mut cfg: Config = serde_json::from_str(&text).context("配置格式错误")?;
+    cfg.normalize();
     cfg.validate()?;
     Ok(cfg)
 }
@@ -579,6 +648,26 @@ pub fn read_config_file(path: &str) -> Result<Config> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn migrate_app_rules() {
+        let mut c = Config::default();
+        c.rules.push(AutoRule { id: "a".into(), enabled: true, kind: TriggerKind::App, packages: vec!["g.one".into()], value: 0.0, profile: "gaming".into() });
+        c.rules.push(AutoRule { id: "b".into(), enabled: true, kind: TriggerKind::Charging, packages: vec![], value: 0.0, profile: "charging".into() });
+        c.refresh.rules.push(RefreshRule { id: "r1".into(), enabled: true, packages: vec!["g.one".into()], rate: 120 });
+        c.refresh.rules.push(RefreshRule { id: "r2".into(), enabled: true, packages: vec!["g.two".into()], rate: 90 });
+        assert!(c.normalize());
+        assert_eq!(c.rules.len(), 1);
+        assert_eq!(c.rules[0].kind, TriggerKind::Charging);
+        assert!(c.refresh.rules.is_empty());
+        assert_eq!(c.apps.len(), 2);
+        assert_eq!((c.apps[0].profile.as_str(), c.apps[0].refresh), ("gaming", 120));
+        assert_eq!((c.apps[1].profile.as_str(), c.apps[1].refresh), ("", 90));
+        // 再次规整不产生变化
+        let snapshot = c.clone();
+        assert!(!c.normalize());
+        assert_eq!(c, snapshot);
+    }
 
     #[test]
     fn charge_overlay() {

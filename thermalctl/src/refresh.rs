@@ -4,7 +4,7 @@
 //! 锁定期间定期复核并重新写入；应用离开前台后恢复锁定前的值，交还系统控制。
 
 use crate::logln;
-use crate::profile::RefreshConfig;
+use crate::profile::{AppRule, RefreshConfig};
 use std::process::{Command, Stdio};
 
 const KEY: &str = "miui_refresh_rate";
@@ -39,14 +39,13 @@ impl Controller {
     }
 
     /// 按配置与前台应用求出期望的锁定目标
-    pub fn desired(cfg: &RefreshConfig, foreground: &[String], guard: bool, disabled: bool) -> Option<(String, u32)> {
+    pub fn desired(cfg: &RefreshConfig, apps: &[AppRule], foreground: &[String], guard: bool, disabled: bool) -> Option<(String, u32)> {
         if !cfg.enabled || disabled || (guard && cfg.respect_guard) {
             return None;
         }
-        cfg.rules
-            .iter()
-            .filter(|r| r.enabled)
-            .find_map(|r| foreground.iter().find(|p| r.packages.contains(p)).map(|p| (p.clone(), r.rate)))
+        apps.iter()
+            .filter(|a| a.enabled && a.refresh > 0)
+            .find_map(|a| foreground.iter().find(|p| a.packages.contains(p)).map(|p| (p.clone(), a.refresh)))
     }
 
     pub fn update(&mut self, desired: Option<(String, u32)>, tick: u64) {

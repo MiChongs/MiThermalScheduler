@@ -19,7 +19,6 @@ export const CAT_ICONS = {
 };
 
 export const TRIGGERS = {
-  app: { name: '按应用', icon: 'apps', desc: '指定应用在前台时' },
   charging: { name: '充电时', icon: 'battery_charging_full', desc: '连接充电器时' },
   screenOff: { name: '熄屏时', icon: 'mobile_off', desc: '屏幕关闭时' },
   batteryBelow: { name: '低电量', icon: 'battery_alert', desc: '电量低于设定值时' },

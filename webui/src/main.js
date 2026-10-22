@@ -21,17 +21,17 @@ import { LitElement, html } from 'lit';
 import { BIN, ctl, exec, hasKsu, listApps, previewProfile, saveConfig } from './api.js';
 import { initTheme } from './theme.js';
 import { TRIGGERS, clone, icon, uid, when } from './ui.js';
-import { renderAuto } from './views/auto.js';
+import { renderApps } from './views/apps.js';
 import { renderEditor, ruleSheet } from './views/editor.js';
 import { renderHome } from './views/home.js';
 import { renderLogs } from './views/logs.js';
-import { renderProfiles } from './views/profiles.js';
+import { renderThermal } from './views/thermal.js';
 import { renderSettings } from './views/settings.js';
 
 const PAGES = [
   { id: 'home', label: '概览', icon: 'dashboard', render: renderHome },
-  { id: 'profiles', label: '方案', icon: 'tune', render: renderProfiles },
-  { id: 'auto', label: '自动化', icon: 'automation', render: renderAuto },
+  { id: 'thermal', label: '温控', icon: 'device_thermostat', render: renderThermal },
+  { id: 'apps', label: '应用', icon: 'apps', render: renderApps },
   { id: 'logs', label: '日志', icon: 'history', render: renderLogs },
   { id: 'settings', label: '设置', icon: 'settings', render: renderSettings },
 ];
@@ -285,14 +285,13 @@ class App extends LitElement {
     this.pushSheet({ title: s.label, render: () => html`<textarea class="code" readonly .value=${r.text}></textarea>` });
   }
 
-  // ---------- 自动化 ----------
+  // ---------- 场景规则 ----------
   editAutoRule(rule) {
-    const r = rule ? clone(rule) : { id: uid('r'), enabled: true, kind: 'app', packages: [], value: 20, profile: 'gaming' };
-    const picker = { query: '' };
+    const r = rule ? clone(rule) : { id: uid('r'), enabled: true, kind: 'charging', packages: [], value: 20, profile: 'charging' };
     const up = () => this.requestUpdate();
     const profiles = this.allProfiles();
     this.pushSheet({
-      title: rule ? '编辑规则' : '添加规则',
+      title: rule ? '编辑场景规则' : '添加场景规则',
       render: () => {
         return html`
           <div class="section-head first"><h2>条件</h2></div>
@@ -317,15 +316,9 @@ class App extends LitElement {
           <div class="chip-scroll wrap">
             ${profiles.map((p) => html`<button class="pchip ${r.profile === p.id ? 'on' : ''}" @click=${() => { r.profile = p.id; up(); }}>${icon(p.icon || 'tune')}<span>${p.name}</span></button>`)}
           </div>
-
-          ${r.kind === 'app' ? this.appPicker(r, picker) : ''}
         `;
       },
       save: async () => {
-        if (r.kind === 'app' && !r.packages.length) {
-          await this.ask({ title: '请至少选择一个应用', ok: '好', cancel: null });
-          return false;
-        }
         return this.edit((c) => {
           const i = c.rules.findIndex((x) => x.id === r.id);
           if (i >= 0) c.rules[i] = r;
@@ -340,8 +333,11 @@ class App extends LitElement {
   appPicker(target, picker) {
     const up = () => this.requestUpdate();
     const q = picker.query;
-    const apps = (this.apps ?? []).filter((a) => !q || a.label.toLowerCase().includes(q) || a.pkg.includes(q));
     const picked = new Set(target.packages);
+    // 已选应用排在最前，打开编辑器即可看到当前选择
+    const apps = (this.apps ?? [])
+      .filter((a) => !q || a.label.toLowerCase().includes(q) || a.pkg.includes(q))
+      .sort((a, b) => Number(picked.has(b.pkg)) - Number(picked.has(a.pkg)));
     return html`
       <div class="section-head"><h2>应用</h2><span class="hint-inline">已选 ${target.packages.length} 个</span></div>
       <div class="search">${icon('search')}<input placeholder="搜索应用名称或包名" @input=${(e) => { picker.query = e.target.value.toLowerCase(); up(); }}></div>
@@ -358,20 +354,27 @@ class App extends LitElement {
       </div>`;
   }
 
-  // ---------- 应用刷新率 ----------
-  editRefreshRule(rule) {
+  // ---------- 应用配置 ----------
+  editApp(rule) {
     const rates = this.info.refreshRates?.length ? this.info.refreshRates : [120, 90, 60];
-    const r = rule ? clone(rule) : { id: uid('f'), enabled: true, packages: [], rate: rates[0] };
+    const r = rule ? clone(rule) : { id: uid('a'), enabled: true, packages: [], profile: 'gaming', refresh: rates[0] };
     const picker = { query: '' };
     const up = () => this.requestUpdate();
+    const profiles = this.allProfiles().filter((p) => p.id !== 'stock');
     this.pushSheet({
-      title: rule ? '编辑刷新率规则' : '添加刷新率规则',
+      title: rule ? '编辑应用配置' : '添加应用配置',
       render: () => html`
-        <div class="section-head first"><h2>刷新率上限</h2></div>
+        <div class="section-head first"><h2>前台时使用的方案</h2></div>
         <div class="chip-scroll wrap">
-          ${rates.map((hz) => html`<button class="pchip ${r.rate === hz ? 'on' : ''}" @click=${() => { r.rate = hz; up(); }}>${icon('speed')}<span>${hz} Hz</span></button>`)}
+          <button class="pchip ${!r.profile ? 'on' : ''}" @click=${() => { r.profile = ''; up(); }}>${icon('close')}<span>不切换</span></button>
+          ${profiles.map((p) => html`<button class="pchip ${r.profile === p.id ? 'on' : ''}" @click=${() => { r.profile = p.id; up(); }}>${icon(p.icon || 'tune')}<span>${p.name}</span></button>`)}
         </div>
-        <p class="hint">所选应用位于前台时，系统刷新率上限锁定为该值。游戏内帧率选项不应超过屏幕支持的最高刷新率。</p>
+        <div class="section-head"><h2>刷新率上限</h2></div>
+        <div class="chip-scroll wrap">
+          <button class="pchip ${!r.refresh ? 'on' : ''}" @click=${() => { r.refresh = 0; up(); }}>${icon('close')}<span>不锁定</span></button>
+          ${rates.map((hz) => html`<button class="pchip ${r.refresh === hz ? 'on' : ''}" @click=${() => { r.refresh = hz; up(); }}>${icon('speed')}<span>${hz} Hz</span></button>`)}
+        </div>
+        <p class="hint">游戏内帧率选项不应超过屏幕支持的最高刷新率。</p>
         ${this.appPicker(r, picker)}
       `,
       save: async () => {
@@ -379,19 +382,22 @@ class App extends LitElement {
           await this.ask({ title: '请至少选择一个应用', ok: '好', cancel: null });
           return false;
         }
+        if (!r.profile && !r.refresh) {
+          await this.ask({ title: '请至少设置方案或刷新率', ok: '好', cancel: null });
+          return false;
+        }
         return this.edit((c) => {
-          c.refresh ??= { enabled: true, respectGuard: true, rules: [] };
-          const i = c.refresh.rules.findIndex((x) => x.id === r.id);
-          if (i >= 0) c.refresh.rules[i] = r;
-          else c.refresh.rules.push(r);
-          c.refresh.enabled = true;
-        }, '刷新率规则已保存');
+          c.apps ??= [];
+          const i = c.apps.findIndex((x) => x.id === r.id);
+          if (i >= 0) c.apps[i] = r;
+          else c.apps.push(r);
+        }, '应用配置已保存');
       },
     });
   }
 
-  async deleteRefreshRule(i) {
-    if (await this.ask({ title: '删除这条刷新率规则？', ok: '删除', danger: true })) this.edit((c) => { c.refresh.rules.splice(i, 1); }, '已删除');
+  async deleteApp(i) {
+    if (await this.ask({ title: '删除这条应用配置？', ok: '删除', danger: true })) this.edit((c) => { c.apps.splice(i, 1); }, '已删除');
   }
 
   async deleteAutoRule(i) {
@@ -514,7 +520,7 @@ class App extends LitElement {
     this.page = id;
     window.scrollTo({ top: 0 });
     if (id === 'logs') this.loadLogs();
-    if (id === 'auto') this.loadJoyose();
+    if (id === 'apps') this.loadJoyose();
   }
 
   // ---------- Joyose ----------

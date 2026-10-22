@@ -366,6 +366,46 @@ textarea.code:focus { outline: 2px solid var(--md-sys-color-primary); border-col
 .app-list .list-row { min-height: 60px; }
 .letter { display: grid; place-items: center; width: 40px; height: 40px; flex: none; border-radius: 50%; background: var(--md-sys-color-tertiary-container); color: var(--md-sys-color-on-tertiary-container); font-weight: 500; }
 
+/* ---------- 功能状态 ---------- */
+.features { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 10px; }
+.feature {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  min-width: 0;
+  padding: 10px 12px;
+  border: none;
+  border-radius: var(--radius-m);
+  background: var(--md-sys-color-surface-container);
+  color: var(--md-sys-color-on-surface-variant);
+  text-align: left;
+  cursor: pointer;
+}
+.feature .ic { width: 20px; height: 20px; margin-bottom: 4px; }
+.feature-name { font-size: 12px; }
+.feature-val { font-size: 13px; font-weight: 500; color: var(--md-sys-color-on-surface); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.feature.on { background: var(--md-sys-color-secondary-container); color: var(--md-sys-color-on-secondary-container); }
+.feature.on .feature-val { color: inherit; }
+.feature.danger { background: var(--md-sys-color-error-container); color: var(--md-sys-color-on-error-container); }
+.feature.danger .feature-val { color: inherit; }
+@media (max-width: 400px) { .features { grid-template-columns: repeat(2, 1fr); } }
+
+/* ---------- 决策顺序 ---------- */
+.order { margin-top: 8px; padding: 14px 16px; }
+.order-title { font-size: 12px; color: var(--md-sys-color-on-surface-variant); margin-bottom: 8px; }
+.order-steps { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.order-step { display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px 4px 6px; border-radius: 999px; font-size: 13px; background: var(--md-sys-color-surface-container-high); }
+.order-step .ic { width: 16px; height: 16px; }
+.order-step.on { background: var(--md-sys-color-primary); color: var(--md-sys-color-on-primary); }
+.order-sub { margin-top: 8px; font-size: 12px; color: var(--md-sys-color-on-surface-variant); }
+
+/* ---------- 应用配置 ---------- */
+.app-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.mini-chip { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 6px; font-size: 12px; background: var(--md-sys-color-secondary-container); color: var(--md-sys-color-on-secondary-container); }
+.mini-chip.muted { background: var(--md-sys-color-surface-container-highest); color: var(--md-sys-color-on-surface-variant); }
+.mini-chip .ic { width: 14px; height: 14px; }
+
 /* ---------- Joyose ---------- */
 .floor-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; margin-top: 12px; }
 .floor-item { display: flex; flex-direction: column; gap: 4px; font-size: 13px; }

@@ -113,6 +113,12 @@ fn decide(cfg: &Config, inp: &Inputs, guard: &mut bool, active_rules: &mut Vec<S
     } else {
         *guard = false;
     }
+    // 应用配置优先于场景规则
+    let app_hit = cfg.apps.iter().filter(|a| a.enabled && !a.profile.is_empty()).find_map(|a| inp.foreground.iter().find(|p| a.packages.contains(p)).map(|p| (a, p)));
+    if let Some((app, pkg)) = app_hit {
+        *active_rules = Vec::new();
+        return Decision { profile: pick(&app.profile), reason: format!("前台应用 {pkg}"), rule_id: app.id.clone() };
+    }
     let mut now_active = Vec::new();
     let mut found: Option<Decision> = None;
     if cfg.automation {
@@ -167,7 +173,7 @@ pub fn describe(cfg: &Config, st: &State) -> String {
         st.effective_name,
         st.reason,
         st.installed,
-        if cfg.automation { format!("{} 条规则", cfg.rules.iter().filter(|r| r.enabled).count()) } else { "关闭".into() }
+        format!("{} 条场景规则 · {} 个应用配置", if cfg.automation { cfg.rules.iter().filter(|r| r.enabled).count() } else { 0 }, cfg.apps.iter().filter(|a| a.enabled).count())
     )
 }
 
@@ -225,8 +231,7 @@ pub fn run() -> Result<()> {
             joy_force = true;
             logln!("配置已重新加载");
         }
-        let needs_fg = (cfg.enabled && cfg.automation && cfg.rules.iter().any(|r| r.enabled && r.kind == TriggerKind::App))
-            || (cfg.refresh.enabled && cfg.refresh.rules.iter().any(|r| r.enabled));
+        let needs_fg = cfg.apps.iter().any(|a| a.enabled && ((cfg.enabled && !a.profile.is_empty()) || (cfg.refresh.enabled && a.refresh > 0)));
         let inp = Inputs {
             temp: system::board_temp(),
             screen_on: system::screen_on(),
@@ -290,7 +295,7 @@ pub fn run() -> Result<()> {
             st.joyose = joyose::injected();
         }
 
-        rate_ctl.update(refresh::Controller::desired(&cfg.refresh, &inp.foreground, guard, module_disabled()), tick);
+        rate_ctl.update(refresh::Controller::desired(&cfg.refresh, &cfg.apps, &inp.foreground, guard, module_disabled()), tick);
         let (refresh_pkg, refresh_rate) = rate_ctl.active().cloned().unwrap_or_default();
 
         let new_state = State {

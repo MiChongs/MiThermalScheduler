@@ -20,6 +20,7 @@ function summary(app, p) {
   return out.length ? out : ['与官方一致'];
 }
 
+/** 总开关与方案卡片（温控页） */
 export function renderProfiles(app) {
   const st = app.status?.daemon.state;
   const list = app.allProfiles();
@@ -33,7 +34,7 @@ export function renderProfiles(app) {
       <md-switch .selected=${app.cfg.enabled} @click=${(e) => e.stopPropagation()} @change=${(e) => app.toggleEnabled(e.target.selected)}></md-switch>
     </div>
 
-    <div class="section-head"><h2>方案</h2><span class="hint-inline">轻触设为默认方案</span></div>
+    <div class="section-head"><h2>默认方案</h2><span class="hint-inline">轻触设为默认方案</span></div>
     <div class="profile-grid">
       ${list.map((p) => {
         const isDefault = app.cfg.active === p.id;
@@ -59,6 +60,6 @@ export function renderProfiles(app) {
         </article>`;
       })}
     </div>
-    <md-fab class="fab" variant="primary" label="新建方案" @click=${() => app.newProfile()}><span slot="icon">${icon('add')}</span></md-fab>
+    <md-filled-tonal-button class="block-btn" @click=${() => app.newProfile()}><span slot="icon">${icon('add')}</span>新建方案</md-filled-tonal-button>
   `;
 }

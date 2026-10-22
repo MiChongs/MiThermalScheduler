@@ -39,6 +39,8 @@ export function renderHome(app) {
       </div>
     </section>
 
+    ${features(app, s)}
+
     <div class="section-head"><h2>快速切换</h2><span class="hint-inline">设为默认方案</span></div>
     <div class="chip-scroll">
       ${profiles.map(
@@ -93,5 +95,22 @@ function freqRow(name, sub, cur, max, hw) {
       <div class="bar-cap" style="width:${hw ? (max / hw) * 100 : 0}%"></div>
       <div class="bar-cur" style="left:${hw ? Math.min(100, (cur / hw) * 100) : 0}%"></div>
     </div>
+  </div>`;
+}
+
+/** 各功能当前状态 */
+function features(app, s) {
+  const st = s.daemon.state;
+  const cfg = app.cfg;
+  const items = [
+    ['shield', '过热保护', !cfg.guard.enabled ? '关闭' : st.guard ? '已触发' : `${cfg.guard.trip}°C`, st.guard ? 'danger' : cfg.guard.enabled ? 'on' : '', 'thermal'],
+    ['battery_charging_full', '充电加速', !cfg.charge?.enabled ? '关闭' : st.effective?.endsWith('+charge') ? '生效中' : '待充电', st.effective?.endsWith('+charge') ? 'on' : '', 'thermal'],
+    ['speed', '刷新率', st.refreshRate ? `${st.refreshRate} Hz` : cfg.refresh?.enabled === false ? '关闭' : '待机', st.refreshRate ? 'on' : '', 'apps'],
+    ['sports_esports', 'Joyose', !cfg.joyose?.enabled ? '官方' : st.joyose ? '已调教' : '未生效', st.joyose ? 'on' : '', 'apps'],
+  ];
+  return html`<div class="features">
+    ${items.map(([ic, name, val, tone, page]) => html`<button class="feature ${tone}" @click=${() => app.setPage(page)}>
+      ${icon(ic)}<span class="feature-name">${name}</span><span class="feature-val">${val}</span>
+    </button>`)}
   </div>`;
 }

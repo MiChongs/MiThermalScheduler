@@ -56,17 +56,17 @@ pub fn scene_label(file: &str) -> String {
         "videochat" => "视频通话",
         "camera" => "相机",
         "4k" => "4K 录像",
-        "tgame" => "游戏 · T",
-        "mgame" => "游戏 · M",
-        "cgame" => "游戏 · C",
-        "sphone" => "通话 · S",
+        "tgame" => "游戏（T）",
+        "mgame" => "游戏（M）",
+        "cgame" => "游戏（C）",
+        "sphone" => "通话（S）",
         "yuanshen" => "原神",
         "xingtie" => "星穹铁道",
         "highfps" => "高帧率",
-        "cclassvideo" => "视频 · C",
+        "cclassvideo" => "视频（C）",
         other => other,
     };
-    if tags.is_empty() { base.to_string() } else { format!("{base} · {}", tags.join(" · ")) }
+    if tags.is_empty() { base.to_string() } else { format!("{base}（{}）", tags.join("，")) }
 }
 
 fn read_encrypted(name: &str) -> Option<String> {

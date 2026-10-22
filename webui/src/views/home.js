@@ -1,16 +1,16 @@
 import { html } from 'lit';
-import { fmtT, gauge, icon, mhz, sparkline, tempTone, when } from '../ui.js';
+import { cpuRange, fmtT, gauge, icon, mhz, sparkline, tempTone, when } from '../ui.js';
 
 const CLUSTER = { 0: '小核', 2: '大核', 5: '大核', 7: '超大核' };
 
 function statusBanner(app, s) {
   const st = s.daemon.state;
   if (s.moduleDisabled) return { tone: 'muted', icon: 'power_settings_new', title: '模块已停用', sub: '系统官方温控已恢复' };
-  if (!s.daemon.running) return { tone: 'error', icon: 'warning', title: '守护进程未运行', sub: '重启手机后自动启动；也可在「设置」中手动启动' };
+  if (!s.daemon.running) return { tone: 'error', icon: 'warning', title: '守护进程未运行', sub: '重启设备后自动启动，也可在设置中手动启动' };
   if (st.error) return { tone: 'error', icon: 'warning', title: '应用失败，已回退官方温控', sub: st.error };
   if (st.guard) return { tone: 'error', icon: 'shield', title: '过热保护已触发', sub: st.reason };
-  if (!s.enabled || st.effective === 'stock') return { tone: 'muted', icon: 'verified', title: '官方温控', sub: s.enabled ? st.reason : '总开关已关闭' };
-  return { tone: 'ok', icon: app.profileIcon(st.effective), title: st.effectiveName, sub: `${st.reason} · 接管 ${st.installed} 个场景` };
+  if (!s.enabled || st.effective === 'stock') return { tone: 'muted', icon: 'verified', title: '官方温控', sub: s.enabled ? st.reason : '温控调度未启用' };
+  return { tone: 'ok', icon: app.profileIcon(st.effective), title: st.effectiveName, sub: `${st.reason}，接管 ${st.installed} 个场景` };
 }
 
 export function renderHome(app) {
@@ -70,14 +70,14 @@ export function renderHome(app) {
 
     <div class="section-head"><h2>性能上限</h2><span class="hint-inline">当前 / 温控上限 / 硬件最高</span></div>
     <div class="card-outlined pad freq">
-      ${s.clusters.map((c) => freqRow(`${CLUSTER[c.first] ?? c.policy}`, `CPU ${c.cpus.replace(/ /g, '·')}`, mhz(c.cur), mhz(c.max), mhz(c.hw)))}
+      ${s.clusters.map((c) => freqRow(`${CLUSTER[c.first] ?? c.policy}`, `CPU ${cpuRange(c.cpus)}`, mhz(c.cur), mhz(c.max), mhz(c.hw)))}
       ${freqRow('GPU', `等级 ${s.gpu.level}`, Math.round(s.gpu.cur / 1e6), Math.round(s.gpu.max / 1e6), Math.round(s.gpu.hw / 1e6))}
     </div>
 
     <div class="section-head"><h2>电池</h2></div>
     <div class="card-outlined pad kv4">
       <div><span>电量</span><b>${s.battery.level}%</b></div>
-      <div><span>${s.battery.charging ? (s.daemon.state.effective?.endsWith('+charge') ? '充电 · 加速' : '充电') : '放电'}</span><b>${Math.abs(s.battery.currentMa)} mA</b></div>
+      <div><span>${s.battery.charging ? (s.daemon.state.effective?.endsWith('+charge') ? '充电（加速）' : '充电') : '放电'}</span><b>${Math.abs(s.battery.currentMa)} mA</b></div>
       <div><span>温度</span><b>${fmtT(s.battery.temp)}°C</b></div>
       <div><span>屏幕</span><b>${s.screenOn ? '亮屏' : '熄屏'}</b></div>
     </div>

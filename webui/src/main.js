@@ -163,7 +163,7 @@ class App extends LitElement {
       try {
         const r = await saveConfig(snapshot);
         this.savedCfg = snapshot;
-        if (r.warning) this.toast(`已保存，但应用失败：${r.warning}`);
+        if (r.warning) this.toast(`配置已保存，应用失败：${r.warning}`);
         else if (!this.saveDirty && this.pendingMsg) this.toast(this.pendingMsg);
       } catch (e) {
         ok = false;
@@ -212,7 +212,7 @@ class App extends LitElement {
     if (v === 'copy') this.openEditor({ ...clone(p), id: uid('p'), name: `${p.name} 副本`, builtin: false }, true);
     if (v === 'delete') {
       const used = this.cfg.rules.filter((r) => r.profile === p.id).length;
-      if (!(await this.ask({ title: `删除「${p.name}」？`, body: used ? `有 ${used} 条自动化规则使用此方案，这些规则也会被删除。` : '此操作无法撤销。', ok: '删除', danger: true }))) return;
+      if (!(await this.ask({ title: `删除「${p.name}」？`, body: used ? `有 ${used} 条场景规则使用此方案，删除方案时将一并删除。` : '此操作无法撤销。', ok: '删除', danger: true }))) return;
       await this.edit((c) => {
         c.profiles = c.profiles.filter((x) => x.id !== p.id);
         c.rules = c.rules.filter((r) => r.profile !== p.id);
@@ -262,7 +262,7 @@ class App extends LitElement {
     let value = o.text || s.text;
     this.pushSheet({
       title: s.label,
-      render: () => html`<p class="hint">完整替换「${s.file}」的内容。保存方案后生效。</p>
+      render: () => html`<p class="hint">以下内容将完整替换 ${s.file}，保存方案后生效。</p>
         <textarea class="code" spellcheck="false" .value=${value} @input=${(e) => { value = e.target.value; }}></textarea>`,
       save: () => {
         if (!/^\s*\[/.test(value)) {
@@ -272,7 +272,7 @@ class App extends LitElement {
         o.text = value;
         return true;
       },
-      extra: { label: '载入官方', run: () => { value = s.text; this.requestUpdate(); return false; } },
+      extra: { label: '载入官方配置', run: () => { value = s.text; this.requestUpdate(); return false; } },
     });
   }
 
@@ -427,7 +427,7 @@ class App extends LitElement {
   }
 
   async resetAll() {
-    if (!(await this.ask({ title: '恢复官方温控？', body: '将关闭总开关并删除所有覆盖文件。你的方案与自动化规则会保留。', ok: '恢复', danger: true }))) return;
+    if (!(await this.ask({ title: '恢复官方温控？', body: '将停用温控调度并删除全部覆盖文件，已有方案与规则将保留。', ok: '恢复', danger: true }))) return;
     this.busy = '正在恢复…';
     try {
       await ctl('reset');
@@ -453,7 +453,7 @@ class App extends LitElement {
     let value = '';
     this.pushSheet({
       title: '导入配置',
-      render: () => html`<p class="hint">粘贴之前导出的 JSON，将覆盖当前全部方案与规则。</p>
+      render: () => html`<p class="hint">请粘贴导出的配置。导入后将覆盖当前全部方案与规则。</p>
         <textarea class="code" spellcheck="false" placeholder="{ ... }" @input=${(e) => { value = e.target.value; }}></textarea>`,
       saveLabel: '导入',
       save: async () => {
@@ -471,7 +471,7 @@ class App extends LitElement {
 
   async viewLoaded() {
     const r = await ctl('loaded');
-    this.pushSheet({ title: `当前加载 · ${r.label}`, render: () => html`<p class="hint">sconfig = ${r.sconfig}，${r.scene}</p><textarea class="code" readonly .value=${r.text}></textarea>` });
+    this.pushSheet({ title: `当前加载的配置（${r.label}）`, render: () => html`<p class="hint">sconfig = ${r.sconfig}，${r.scene}</p><textarea class="code" readonly .value=${r.text}></textarea>` });
   }
 
   // ---------- 面板、对话框与提示 ----------
@@ -539,7 +539,7 @@ class App extends LitElement {
     try {
       const r = await ctl('joyose apply');
       this.joyose = r.status;
-      this.toast(r.result ?? '已是最新，无需重新应用');
+      this.toast(r.result ?? '配置未变化，无需重新应用');
     } catch (e) {
       await this.ask({ title: '应用失败', body: e.message, ok: '知道了', cancel: null });
     }
@@ -555,7 +555,7 @@ class App extends LitElement {
       <header class="appbar">
         <div class="grow">
           <h1>${page.id === 'home' ? '小米温控调度' : page.label}</h1>
-          ${when(page.id === 'home' && this.info, () => html`<div class="appbar-sub">${this.info.device.model} · ${this.info.device.soc} · ${this.info.device.os}</div>`)}
+          ${when(page.id === 'home' && this.info, () => html`<div class="appbar-sub">${this.info.device.model}　${this.info.device.soc}　${this.info.device.os}</div>`)}
         </div>
         <md-icon-button @click=${() => this.poll()}>${icon('restart_alt')}</md-icon-button>
       </header>

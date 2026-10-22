@@ -53,13 +53,13 @@ impl Controller {
             (Some((pkg, rate)), None) => {
                 self.original = get();
                 put(&rate.to_string());
-                logln!("刷新率锁定 → {rate} Hz（{pkg}），原值 {}", self.original.as_deref().unwrap_or("未设置"));
+                logln!("刷新率锁定为 {rate} Hz（{pkg}），原值 {}", self.original.as_deref().unwrap_or("未设置"));
                 self.active = Some((pkg, rate));
             }
             (Some((pkg, rate)), Some((cur_pkg, cur_rate))) => {
                 if rate != *cur_rate || pkg != *cur_pkg {
                     put(&rate.to_string());
-                    logln!("刷新率锁定 → {rate} Hz（{pkg}）");
+                    logln!("刷新率锁定为 {rate} Hz（{pkg}）");
                     self.active = Some((pkg, rate));
                 } else if tick % RECHECK_TICKS == 0 && get().as_deref() != Some(rate.to_string().as_str()) {
                     put(&rate.to_string());
@@ -80,6 +80,6 @@ impl Controller {
             Some(v) => put(&v),
             None => delete(),
         }
-        logln!("刷新率锁定已解除，交还系统控制");
+        logln!("刷新率锁定已解除，已恢复系统设置");
     }
 }

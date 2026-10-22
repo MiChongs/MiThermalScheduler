@@ -35,7 +35,7 @@ pub fn log_line(msg: &str) {
 }
 
 #[derive(Parser)]
-#[command(name = "thermalctl", version, about = "小米温控调度 · 后端")]
+#[command(name = "thermalctl", version, about = "小米温控调度后端")]
 struct Cli {
     #[command(subcommand)]
     cmd: Cmd,
@@ -67,7 +67,7 @@ enum Cmd {
     },
     /// 立即重新应用当前配置
     Apply,
-    /// 关闭总开关并恢复官方温控
+    /// 停用温控调度并恢复官方温控
     Reset,
     /// 最近的温控动作（JSON）
     Log {
@@ -185,9 +185,9 @@ fn run(cli: Cli) -> Result<()> {
             let sc = system::sconfig();
             let scene = Stock::load().map(|s| s.scene_for(sc)).unwrap_or_default();
             println!("当前场景     {}（sconfig {sc}）", stock::scene_label(&scene));
-            println!("配置密钥     {}", if crypto::active_key() == 0 { "旧版（thermalopenssl.h）" } else { "新版" });
-            println!("守护进程     {}", if running { format!("运行中（pid {}）", st.pid) } else { "未运行".into() });
-            println!("总开关       {}", if cfg.enabled { "已启用" } else { "已关闭" });
+            println!("配置密钥     {}", if crypto::active_key() == 0 { "旧版" } else { "新版" });
+            println!("守护进程     {}", if running { format!("运行中（PID {}）", st.pid) } else { "未运行".into() });
+            println!("温控调度     {}", if cfg.enabled { "已启用" } else { "未启用" });
             if cfg.enabled && running {
                 println!("生效方案     {}（{}）", st.effective_name, st.reason);
                 println!("接管场景     {} 个", st.installed);
@@ -250,7 +250,7 @@ fn run(cli: Cli) -> Result<()> {
                 cfg.save()?;
             }
             let _ = fs::remove_file(&file);
-            logln!("配置已保存（默认方案 {}，总开关 {}）", cfg.active, if cfg.enabled { "开" } else { "关" });
+            logln!("配置已保存（默认方案 {}，温控调度{}）", cfg.active, if cfg.enabled { "已启用" } else { "未启用" });
             // 守护进程运行时只通知它在后台应用，立即返回，避免界面等待；结果通过 status 反映
             if daemon::notify() {
                 print(json!({ "ok": true, "queued": true }));
@@ -294,7 +294,7 @@ fn run(cli: Cli) -> Result<()> {
                 let _l = install::lock()?;
                 cfg.save()?;
             }
-            logln!("已关闭总开关，恢复官方温控");
+            logln!("温控调度已停用，已恢复官方温控");
             print(json!({ "ok": true, "result": apply_now()? }));
         }
         Cmd::Log { n } => {

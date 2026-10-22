@@ -216,7 +216,7 @@ impl ChargeBoost {
             q.rules.insert("*#SIC-BAT".into(), RuleOverride { disabled: true, ..Default::default() });
         }
         q.id = format!("{}+charge", p.id);
-        q.name = format!("{} · 充电加速", p.name);
+        q.name = format!("{}（充电加速）", p.name);
         q
     }
 }
@@ -315,28 +315,28 @@ pub fn builtins() -> Vec<Profile> {
         "游戏",
         "gamepad",
         1,
-        "CPU / GPU 阈值 +8°C，并为大核设置 1.5 GHz 降频下限，减少团战掉帧。建议配合「按应用」自动切换使用。",
+        "CPU、GPU 与 NPU 降频阈值提高 8°C，并为大核设置 1.5 GHz 降频下限，减少高负载场景下的掉帧。建议在应用配置中为游戏指定此方案。",
         &[("cpu", Offset, 8.0), ("gpu", Offset, 8.0), ("npu", Offset, 8.0), ("display", Offset, 6.0), ("net", Offset, 5.0)],
     );
     gaming.cpu_floor = [("cpu2", 1_497_600), ("cpu5", 1_497_600), ("cpu7", 1_478_400)].iter().map(|(k, v)| (k.to_string(), *v)).collect();
     gaming.gpu_max_level = Some(1);
     vec![
-        preset(STOCK_ID, "官方", "verified", 0, "完全使用系统自带的温控策略，不做任何修改。", &[]),
+        preset(STOCK_ID, "官方", "verified", 0, "使用系统官方温控策略，不做任何修改。", &[]),
         preset(
             "cool",
             "清凉",
             "ac_unit",
             0,
-            "CPU / GPU 提前 3°C 降频，机身更凉、续航更长，适合日常与夏季。",
+            "CPU、GPU 与 NPU 降频阈值降低 3°C，机身温度更低，续航更长，适合日常使用与高温环境。",
             &[("cpu", Offset, -3.0), ("gpu", Offset, -3.0), ("npu", Offset, -3.0)],
         ),
-        preset("light", "轻度", "eco", 0, "CPU / GPU 降频阈值整体提高 3°C，几乎不影响手感温度。", &[("cpu", Offset, 3.0), ("gpu", Offset, 3.0), ("npu", Offset, 3.0)]),
+        preset("light", "轻度", "eco", 0, "CPU、GPU 与 NPU 降频阈值提高 3°C，对机身温度影响较小。", &[("cpu", Offset, 3.0), ("gpu", Offset, 3.0), ("npu", Offset, 3.0)]),
         preset(
             "balanced",
             "均衡",
             "balance",
             0,
-            "CPU / GPU 阈值 +6°C、亮度限制 +3°C，在流畅与温度之间取得平衡。",
+            "CPU、GPU 与 NPU 降频阈值提高 6°C，亮度限制阈值提高 3°C，兼顾性能与温度。",
             &[("cpu", Offset, 6.0), ("gpu", Offset, 6.0), ("npu", Offset, 6.0), ("display", Offset, 3.0)],
         ),
         preset(
@@ -344,7 +344,7 @@ pub fn builtins() -> Vec<Profile> {
             "性能",
             "speed",
             1,
-            "CPU / GPU 阈值 +10°C，亮度与网络限制同步放宽，适合长时间高负载。",
+            "CPU、GPU 与 NPU 降频阈值提高 10°C，同时放宽亮度与网络限制，适用于长时间高负载。",
             &[("cpu", Offset, 10.0), ("gpu", Offset, 10.0), ("npu", Offset, 10.0), ("display", Offset, 5.0), ("net", Offset, 5.0)],
         ),
         gaming,
@@ -353,7 +353,7 @@ pub fn builtins() -> Vec<Profile> {
             "快充",
             "bolt",
             1,
-            "充电限流阈值 +4°C，其余保持官方。建议设为「充电时」自动切换。",
+            "充电限流阈值提高 4°C，其余规则保持官方设置。建议通过「充电时」场景规则启用。",
             &[("charge", Offset, 4.0)],
         ),
         preset(
@@ -361,7 +361,7 @@ pub fn builtins() -> Vec<Profile> {
             "极限",
             "local_fire_department",
             2,
-            "移除 CPU / GPU / NPU 降频与亮度限制，仅保留充电、高温保护与低电量保护。请务必开启过热保护。",
+            "移除 CPU、GPU、NPU 降频与亮度限制，仅保留充电、高温保护与低电量保护规则。使用此方案时必须启用过热保护。",
             &[("cpu", Disable, 0.0), ("gpu", Disable, 0.0), ("npu", Disable, 0.0), ("display", Disable, 0.0), ("net", Offset, 8.0)],
         ),
     ]
@@ -443,7 +443,7 @@ impl Config {
         }
         for r in self.rules.iter().filter(|r| r.enabled) {
             if self.find(&r.profile).is_none() {
-                bail!("自动化规则引用了不存在的方案「{}」", r.profile);
+                bail!("场景规则引用了不存在的方案「{}」", r.profile);
             }
         }
         for a in &self.apps {

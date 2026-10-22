@@ -99,7 +99,7 @@ fn decide(cfg: &Config, inp: &Inputs, guard: &mut bool, active_rules: &mut Vec<S
         return Decision { profile: pick(STOCK_ID), reason: "模块已停用".into(), rule_id: String::new() };
     }
     if !cfg.enabled {
-        return Decision { profile: pick(STOCK_ID), reason: "总开关已关闭".into(), rule_id: String::new() };
+        return Decision { profile: pick(STOCK_ID), reason: "温控调度未启用".into(), rule_id: String::new() };
     }
     if cfg.guard.enabled {
         if inp.temp >= cfg.guard.trip {
@@ -154,26 +154,30 @@ fn decide(cfg: &Config, inp: &Inputs, guard: &mut bool, active_rules: &mut Vec<S
 
 pub fn describe(cfg: &Config, st: &State) -> String {
     if !st.error.is_empty() {
-        return format!("【异常】{} ｜ 已恢复系统官方温控，请打开 WebUI 查看详情。", st.error);
+        return format!("【异常】{}。已恢复系统官方温控，详情请在 WebUI 中查看。", st.error);
     }
     if module_disabled() {
         return "【已停用】模块已停用，系统官方温控已恢复。".into();
     }
     if !cfg.enabled || st.effective.is_empty() || st.effective == STOCK_ID {
-        return "【待机】当前使用系统官方温控 ｜ 打开 WebUI 选择温控方案并启用。".into();
+        return "【待机】当前使用系统官方温控。请在 WebUI 中选择温控方案并启用。".into();
     }
     let guard = if cfg.guard.enabled { format!("{:.0}°C", cfg.guard.trip) } else { "关闭".into() };
     let state = if st.guard { "过热保护中" } else { "运行中" };
-    let mut refresh = if st.refresh_rate > 0 { format!(" ｜ 刷新率锁定：{} Hz", st.refresh_rate) } else { String::new() };
+    let mut extra = String::new();
+    if st.refresh_rate > 0 {
+        extra.push_str(&format!("；刷新率锁定 {} Hz", st.refresh_rate));
+    }
     if st.joyose {
-        refresh.push_str(" ｜ Joyose 调教");
+        extra.push_str("；Joyose 调教已启用");
     }
     format!(
-        "【{state}】当前方案：{}（{}） ｜ 接管场景：{} 个 ｜ 过热保护：{guard} ｜ 自动化：{}{refresh}",
+        "【{state}】当前方案：{}（{}）；接管场景 {} 个；过热保护 {guard}；场景规则 {} 条，应用配置 {} 个{extra}。",
         st.effective_name,
         st.reason,
         st.installed,
-        format!("{} 条场景规则 · {} 个应用配置", if cfg.automation { cfg.rules.iter().filter(|r| r.enabled).count() } else { 0 }, cfg.apps.iter().filter(|a| a.enabled).count())
+        if cfg.automation { cfg.rules.iter().filter(|r| r.enabled).count() } else { 0 },
+        cfg.apps.iter().filter(|a| a.enabled).count()
     )
 }
 
@@ -242,7 +246,7 @@ pub fn run() -> Result<()> {
         // 充电加速：充电时（总开关开启、未触发过热保护）在当前方案之上放宽充电限流
         if cfg.enabled && cfg.charge.enabled && inp.battery.charging && !guard && !module_disabled() {
             d.profile = cfg.charge.overlay(&d.profile);
-            d.reason = format!("{} · 充电中", d.reason);
+            d.reason = format!("{}，充电中", d.reason);
         }
         let switching = current.as_ref().map(|(id, _)| id != &d.profile.id).unwrap_or(true);
 
@@ -252,7 +256,7 @@ pub fn run() -> Result<()> {
             match install::sync(&plain, cfg.immutable) {
                 Ok(o) => {
                     if switching {
-                        logln!("切换方案 → {}（{}），覆盖 {} 个场景", d.profile.name, d.reason, o.count);
+                        logln!("切换方案：{}（{}），覆盖 {} 个场景", d.profile.name, d.reason, o.count);
                         st.since = now();
                     }
                     st.error.clear();

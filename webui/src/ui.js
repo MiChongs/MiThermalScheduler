@@ -30,6 +30,11 @@ export const PROFILE_ICONS = ['tune', 'verified', 'ac_unit', 'eco', 'balance', '
 export const RISK = [null, { label: '注意', cls: 'warn' }, { label: '高风险', cls: 'danger' }];
 
 export const mhz = (khz) => Math.round(khz / 1000);
+/** "4 5 6 7" → "4–7" */
+export const cpuRange = (cpus) => {
+  const l = cpus.trim().split(/\s+/);
+  return l.length > 1 ? `${l[0]}–${l[l.length - 1]}` : l[0];
+};
 export const ghz = (khz) => (khz / 1e6).toFixed(2);
 export const fmtT = (t) => (Number.isFinite(t) ? t.toFixed(1) : '--');
 

@@ -1,7 +1,7 @@
 // 方案编辑器：基础 / 频率 / 场景 / 规则 / 预览
 import { html } from 'lit';
 import { previewProfile } from '../api.js';
-import { CAT_ICONS, PROFILE_ICONS, icon, mhz, when } from '../ui.js';
+import { CAT_ICONS, PROFILE_ICONS, cpuRange, icon, mhz, when } from '../ui.js';
 
 const TABS = ['基础', '频率', '场景', '规则', '预览'];
 const MODES = [
@@ -58,7 +58,7 @@ function basicTab(app, d) {
           </div>
           <div class="seg">
             ${MODES.map(([m, label]) => html`<button class=${r.mode === m ? 'on' : ''} @click=${async () => {
-              if (m === 'disable' && risky && !(await app.ask({ title: `移除「${c.name}」规则？`, body: '这是安全保护类规则，移除后高温时不再限制，可能加速电池老化或导致机身过热。', ok: '移除', danger: true }))) return;
+              if (m === 'disable' && risky && !(await app.ask({ title: `移除「${c.name}」规则？`, body: '该类规则用于安全保护。移除后高温时将不再限制，可能加速电池老化或导致机身过热。', ok: '移除', danger: true }))) return;
               r.mode = m;
               if (m === 'offset' && !r.offset) r.offset = 3;
               up();
@@ -79,12 +79,12 @@ function freqTab(app, d) {
   const names = { 0: '小核', 2: '大核', 5: '大核', 7: '超大核' };
   const gpu = app.info.gpu;
   return html`
-    <p class="hint">降频下限：温控降频时不会低于此频率。仅作用于 CPU 降频规则，不影响低电量保护。设置过高会让高温时无法有效降温，建议配合过热保护使用。</p>
+    <p class="hint">降频下限：温控降频时不会低于此频率。仅作用于 CPU 降频规则，不影响低电量保护。下限设置过高时，高温下将无法有效降温，请同时启用过热保护。</p>
     <div class="card-outlined pad form">
       ${app.info.clusters.map((c) => {
         const key = `cpu${c.first}`;
         const val = String(d.cpuFloor[key] ?? 0);
-        return html`<md-outlined-select label="${names[c.first] ?? c.policy}（CPU ${c.cpus.replace(/ /g, '·')}）降频下限" .value=${val}
+        return html`<md-outlined-select label="${names[c.first] ?? c.policy}（CPU ${cpuRange(c.cpus)}）降频下限" .value=${val}
           @change=${(e) => { const v = Number(e.target.value); if (v) d.cpuFloor[key] = v; else delete d.cpuFloor[key]; up(); }}>
           <md-select-option value="0" ?selected=${val === '0'}><div slot="headline">不限制</div></md-select-option>
           ${[...c.freqs].reverse().map((f) => html`<md-select-option value=${String(f)} ?selected=${val === String(f)}><div slot="headline">${mhz(f)} MHz</div></md-select-option>`)}
@@ -92,12 +92,12 @@ function freqTab(app, d) {
       })}
     </div>
     <div class="section-head"><h2>GPU</h2></div>
-    <p class="hint">GPU 温控以「等级」限制最高频率，等级越大频率越低。设置上限后，温控最多只会降到该等级。</p>
+    <p class="hint">GPU 温控以等级限制最高频率，等级越大频率越低。设置上限后，温控降频不会超过该等级。</p>
     <div class="card-outlined pad form">
       <md-outlined-select label="GPU 最大降频等级" .value=${d.gpuMaxLevel == null ? '-1' : String(d.gpuMaxLevel)}
         @change=${(e) => { const v = Number(e.target.value); d.gpuMaxLevel = v < 0 ? null : v; up(); }}>
         <md-select-option value="-1" ?selected=${d.gpuMaxLevel == null}><div slot="headline">不限制</div></md-select-option>
-        ${gpu.freqs.map((f, i) => html`<md-select-option value=${String(i)} ?selected=${d.gpuMaxLevel === i}><div slot="headline">等级 ${i} · ${Math.round(f / 1e6)} MHz</div></md-select-option>`)}
+        ${gpu.freqs.map((f, i) => html`<md-select-option value=${String(i)} ?selected=${d.gpuMaxLevel === i}><div slot="headline">等级 ${i}（${Math.round(f / 1e6)} MHz）</div></md-select-option>`)}
       </md-outlined-select>
     </div>
   `;
@@ -113,7 +113,7 @@ function sceneTab(app, d) {
         <md-select-option value="" ?selected=${!d.lock}><div slot="headline">不锁定（跟随系统场景）</div></md-select-option>
         ${scenes.list.map((s) => html`<md-select-option value=${s.file} ?selected=${d.lock === s.file}><div slot="headline">${s.label}</div><div slot="supporting-text">${s.file}</div></md-select-option>`)}
       </md-outlined-select>
-      <p class="hint flat">锁定后，所有场景都使用所选场景的策略，例如始终使用游戏场景。传感器定义保持不变。</p>
+      <p class="hint flat">锁定后，所有场景均使用所选场景的策略，传感器定义保持不变。</p>
     </div>
     <div class="section-head"><h2>逐场景设置</h2></div>
     <div class="card-outlined">
@@ -123,7 +123,7 @@ function sceneTab(app, d) {
         return html`<div class="list-row">
           <div class="grow">
             <div class="row-title">${s.label}</div>
-            <div class="row-sub mono">${s.file}${mode === 'text' ? ' · 自定义全文' : mode === 'stock' ? ' · 官方' : ''}</div>
+            <div class="row-sub mono">${s.file}${mode === 'text' ? '（自定义全文）' : mode === 'stock' ? '（保持官方）' : ''}</div>
           </div>
           ${when(mode === 'text', () => html`<md-icon-button @click=${() => app.editSceneText(d, s)}>${icon('edit')}</md-icon-button>`)}
           <select class="native-select" .value=${mode} @change=${(e) => {
@@ -147,7 +147,7 @@ function ruleSummary(sec) {
   const trig = field(sec, 'trig');
   const temps = trig.filter(isTemp).map((v) => Number(v) / 1000);
   const range = temps.length ? `${Math.min(...temps)}–${Math.max(...temps)}°C` : trig.join(' ');
-  return `${field(sec, 'device').join('')} · ${trig.length} 档 · ${range}`;
+  return `${field(sec, 'device').join('')}，${trig.length} 档，${range}`;
 }
 
 function rulesTab(app, d) {
@@ -159,7 +159,7 @@ function rulesTab(app, d) {
   const secs = src.sections.filter((s) => s.category !== 'sensor' && s.category !== 'bcl');
   const catName = Object.fromEntries(app.info.categories.map((c) => [c.id, c.name]));
   return html`
-    <p class="hint">逐条修改规则的触发温度、解除温度与目标值，或单独停用某条规则。「所有场景」会作用于每个场景中的同名规则（以日常场景为模板）。</p>
+    <p class="hint">可逐条修改规则的触发温度、解除温度与目标值，或停用指定规则。选择「所有场景」时，修改作用于各场景中的同名规则，并以日常场景为模板。</p>
     <md-outlined-select class="full" label="场景" .value=${file} @change=${(e) => { ed.ruleScene = e.target.value; app.requestUpdate(); }}>
       <md-select-option value="*" ?selected=${file === '*'}><div slot="headline">所有场景</div></md-select-option>
       ${scenes.list.map((s) => html`<md-select-option value=${s.file} ?selected=${file === s.file}><div slot="headline">${s.label}</div><div slot="supporting-text">${s.file}</div></md-select-option>`)}
@@ -173,7 +173,7 @@ function rulesTab(app, d) {
           <div class="avatar small">${icon(CAT_ICONS[sec.category])}</div>
           <div class="grow">
             <div class="row-title mono">${sec.name}</div>
-            <div class="row-sub">${catName[sec.category] ?? sec.category} · ${ruleSummary(sec)}</div>
+            <div class="row-sub">${catName[sec.category] ?? sec.category}：${ruleSummary(sec)}</div>
           </div>
           ${o ? html`<span class="tag ${o.disabled ? 'danger' : 'accent'}">${o.disabled ? '已停用' : '已微调'}</span>` : inherited ? html`<span class="tag">继承</span>` : ''}
           ${icon('chevron_right', 'dim')}
@@ -206,7 +206,7 @@ export function ruleSheet(app, d, file, sec) {
       ${meta.map(([k, v]) => html`<div><span>${k}</span><b class="mono">${v || '-'}</b></div>`)}
     </div>
     <label class="list-row card-outlined switch-row">
-      <div class="grow"><div class="row-title">启用此规则</div><div class="row-sub">关闭后此规则在${file === '*' ? '所有场景' : '该场景'}中被移除</div></div>
+      <div class="grow"><div class="row-title">启用此规则</div><div class="row-sub">关闭后将从${file === '*' ? '所有场景' : '该场景'}中移除此规则</div></div>
       <md-switch .selected=${!state.disabled} @change=${(e) => { state.disabled = !e.target.selected; app.requestUpdate(); }}></md-switch>
     </label>
     ${when(!state.disabled, () => html`
@@ -227,7 +227,7 @@ export function ruleSheet(app, d, file, sec) {
           <span slot="icon">${icon('add')}</span>添加档位
         </md-text-button>
       </div>
-      <p class="hint">目标值含义取决于设备：CPU 为频率（kHz），GPU / NPU 为限制等级，充电为电流等级，「+」连接多个设备的目标值。</p>
+      <p class="hint">目标值的含义取决于设备：CPU 为频率（kHz），GPU 与 NPU 为限制等级，充电为电流等级；多个设备的目标值以「+」连接。</p>
     `)}
   `;
   const save = () => {
@@ -258,7 +258,7 @@ function previewTab(app, d) {
   const ed = app.editor;
   const p = ed.preview;
   return html`
-    <p class="hint">根据当前编辑内容（尚未保存）生成每个场景的配置，与官方对比。</p>
+    <p class="hint">按当前编辑内容（未保存）生成各场景的配置，并与官方配置对比。</p>
     <md-filled-tonal-button @click=${async () => {
       ed.preview = { loading: true };
       app.requestUpdate();
@@ -276,7 +276,7 @@ function previewTab(app, d) {
       <div class="card-outlined">
         ${p.scenes.map((s) => html`<div class="list-row clickable" @click=${() => app.viewGenerated(d, s)}>
           <div class="grow"><div class="row-title">${s.label}</div><div class="row-sub mono">${s.file}</div></div>
-          <span class="tag ${s.changed ? 'accent' : ''}">${s.changed ? `已修改 · ${s.before}→${s.after} 段` : '官方'}</span>
+          <span class="tag ${s.changed ? 'accent' : ''}">${s.changed ? `已修改（${s.before} 段变为 ${s.after} 段）` : '官方'}</span>
           ${icon('chevron_right', 'dim')}
         </div>`)}
       </div>

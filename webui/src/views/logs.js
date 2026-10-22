@@ -34,7 +34,7 @@ export function renderLogs(app) {
                     <div class="avatar small">${icon(CAT_ICONS[devCat(x.device)])}</div>
                     <div class="grow">
                       <div class="row-title mono">${x.rule}</div>
-                      <div class="row-sub">${x.device} → <b>${x.value}</b></div>
+                      <div class="row-sub">${x.device}，目标值 <b>${x.value}</b></div>
                     </div>
                     <div class="log-meta"><b>${x.reading}</b><span>${x.time.split(' ')[1]}</span></div>
                   </div>`,

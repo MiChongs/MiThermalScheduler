@@ -7,7 +7,7 @@ function summary(app, p) {
   const names = Object.fromEntries(app.info.categories.map((c) => [c.id, c.name]));
   for (const [id, r] of Object.entries(p.categories ?? {})) {
     if (r.mode === 'offset' && r.offset) out.push(`${names[id] ?? id} ${r.offset > 0 ? '+' : ''}${r.offset}°C`);
-    if (r.mode === 'disable') out.push(`移除${names[id] ?? id}`);
+    if (r.mode === 'disable') out.push(`${names[id] ?? id} 已移除`);
   }
   const floors = Object.values(p.cpuFloor ?? {}).filter(Boolean).length;
   if (floors) out.push(`${floors} 簇降频下限`);
@@ -29,7 +29,7 @@ export function renderProfiles(app) {
       <div class="master-icon">${icon(app.cfg.enabled ? 'check_circle' : 'power_settings_new')}</div>
       <div class="grow">
         <div class="master-title">${app.cfg.enabled ? '温控调度已启用' : '温控调度未启用'}</div>
-        <div class="master-sub">${app.cfg.enabled ? '按默认方案与自动化规则接管温控' : '当前使用系统官方温控'}</div>
+        <div class="master-sub">${app.cfg.enabled ? '按方案选择顺序接管系统温控' : '当前使用系统官方温控'}</div>
       </div>
       <md-switch .selected=${app.cfg.enabled} @click=${(e) => e.stopPropagation()} @change=${(e) => app.toggleEnabled(e.target.selected)}></md-switch>
     </div>

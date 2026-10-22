@@ -1,4 +1,4 @@
-// 温控：总开关 · 默认方案 · 场景规则 · 过热保护 · 充电加速
+// 温控：方案选择顺序、方案、场景规则、过热保护、充电加速
 import { html } from 'lit';
 import { TRIGGERS, icon, when } from '../ui.js';
 import { renderProfiles } from './profiles.js';
@@ -23,7 +23,7 @@ function renderOrder(app) {
     <div class="order-steps">
       ${steps.map(([ic, name, on], i) => html`${i ? icon('chevron_right', 'tiny dim') : ''}<span class="order-step ${on ? 'on' : ''}">${icon(ic)}${name}</span>`)}
     </div>
-    <div class="order-sub">充电时在选中的方案之上叠加充电加速</div>
+    <div class="order-sub">充电期间在所选方案的基础上应用充电加速</div>
   </div>`;
 }
 
@@ -36,7 +36,7 @@ function renderSceneRules(app) {
       <div class="avatar small">${icon('automation')}</div>
       <div class="grow">
         <div class="row-title">启用场景规则</div>
-        <div class="row-sub">充电、熄屏、低电量或高温时切换方案；前台应用有应用配置时以应用配置为准</div>
+        <div class="row-sub">在充电、熄屏、低电量或高温时切换方案。前台应用已设置方案时，以应用配置为准</div>
       </div>
       <md-switch .selected=${cfg.automation} @change=${(e) => app.edit((c) => { c.automation = e.target.selected; })}></md-switch>
     </label>
@@ -67,8 +67,8 @@ function renderSceneRules(app) {
         </div>`
       : html`<div class="empty card-outlined">
           ${icon('automation', 'big')}
-          <div>还没有场景规则</div>
-          <p class="hint flat">例如：熄屏时切换到「清凉」，电量低于 20% 时切换到「清凉」。按应用切换请在「应用」页设置。</p>
+          <div>暂无场景规则</div>
+          <p class="hint flat">示例：熄屏时切换到「清凉」方案。按应用切换方案请在应用页中设置。</p>
         </div>`}
     <md-filled-tonal-button class="block-btn" @click=${() => app.editAutoRule(null)}><span slot="icon">${icon('add')}</span>添加场景规则</md-filled-tonal-button>
   `;
@@ -84,7 +84,7 @@ function renderGuard(app) {
         <div class="avatar small error">${icon('shield')}</div>
         <div class="grow">
           <div class="row-title">启用过热保护</div>
-          <div class="row-sub">${st?.guard ? '已触发：当前临时使用官方温控' : '温度过高时临时切回官方温控，降温后自动恢复；优先级最高'}</div>
+          <div class="row-sub">${st?.guard ? '已触发，当前临时使用官方温控' : '温度过高时临时恢复官方温控，温度回落后自动解除'}</div>
         </div>
         <md-switch .selected=${g.enabled} @change=${(e) => app.edit((c) => { c.guard.enabled = e.target.selected; })}></md-switch>
       </label>
@@ -94,7 +94,7 @@ function renderGuard(app) {
           <md-slider min="40" max="60" step="1" labeled .value=${g.trip} @change=${(e) => app.edit((c) => { c.guard.trip = e.target.value; if (c.guard.release >= c.guard.trip) c.guard.release = c.guard.trip - 3; })}></md-slider>
           <div class="slider-label"><span>恢复温度</span><b>${g.release}°C</b></div>
           <md-slider min="35" max=${g.trip - 1} step="1" labeled .value=${g.release} @change=${(e) => app.edit((c) => { c.guard.release = e.target.value; })}></md-slider>
-          <p class="hint flat">以温控传感器（VIRTUAL-SENSOR0，近似机身温度）为准。官方高温提示约从 45°C 开始。</p>
+          <p class="hint flat">温度以温控传感器 VIRTUAL-SENSOR0 为准，该数值接近机身温度。系统高温提示约自 45°C 开始。</p>
         </div>
       `)}
     </div>
@@ -107,13 +107,13 @@ function renderCharge(app) {
   const ensure = (c) => (c.charge ??= { ...cb });
   const active = st?.battery.charging && st?.daemon.state.effective?.endsWith('+charge');
   return html`
-    <div class="section-head"><h2>充电加速</h2>${when(active, () => html`<span class="tag accent">充电中 · 已放宽</span>`)}</div>
+    <div class="section-head"><h2>充电加速</h2>${when(active, () => html`<span class="tag accent">充电加速中</span>`)}</div>
     <div class="card-outlined">
       <label class="list-row switch-row">
         <div class="avatar small">${icon('battery_charging_full')}</div>
         <div class="grow">
           <div class="row-title">启用充电加速</div>
-          <div class="row-sub">充电时在当前方案之上放宽充电限流，亮屏使用时也能保持快充；拔出后自动恢复</div>
+          <div class="row-sub">充电期间放宽充电限流规则，亮屏使用时同样保持快速充电，断开充电器后自动恢复</div>
         </div>
         <md-switch .selected=${cb.enabled} @change=${(e) => app.edit((c) => { ensure(c).enabled = e.target.selected; })}></md-switch>
       </label>
@@ -121,17 +121,17 @@ function renderCharge(app) {
         <div class="slider-block">
           <div class="slider-label"><span>充电限流门限上调</span><b>+${cb.offset}°C</b></div>
           <md-slider min="1" max="8" step="1" labeled .value=${cb.offset} @change=${(e) => app.edit((c) => { ensure(c).offset = e.target.value; })}></md-slider>
-          <p class="hint flat">官方从温控传感器 33°C 起限制充电电流，亮屏使用时通常已被限到 5 A 左右。上调 4°C 后约 37°C 才开始限流。</p>
+          <p class="hint flat">官方规则自温控传感器 33°C 起限制充电电流，亮屏使用时充电电流通常被限制在 5 A 左右。上调 4°C 后，限流起点为 37°C。</p>
         </div>
         <label class="list-row switch-row">
           <div class="avatar small error">${icon('bolt')}</div>
           <div class="grow">
             <div class="row-title">移除 SIC 电流控制</div>
-            <div class="row-sub">同时移除按温度闭环调节充电电流的 SIC-BAT 规则，充电更快、发热更高</div>
+            <div class="row-sub">移除按温度闭环调节充电电流的 SIC-BAT 规则，充电速度更快，发热相应增加</div>
           </div>
           <md-switch .selected=${cb.removeSic} @change=${async (e) => {
             const on = e.target.selected;
-            if (on && !(await app.ask({ title: '移除 SIC 电流控制？', body: '充电时将不再按温度闭环降低电流，电池温度会更高。电池自身的温度保护与模块过热保护仍然有效。', ok: '移除', danger: true }))) {
+            if (on && !(await app.ask({ title: '移除 SIC 电流控制？', body: '充电时将不再按温度闭环降低电流，电池温度会相应升高。电池自身的温度保护与过热保护仍然有效。', ok: '移除', danger: true }))) {
               e.target.selected = false;
               return;
             }

@@ -1,4 +1,4 @@
-// 应用：应用配置（方案 + 刷新率）· 刷新率选项 · 游戏调度（Joyose）
+// 应用：应用配置、刷新率锁定、游戏调度
 import { html } from 'lit';
 import { icon, when } from '../ui.js';
 import { renderJoyose } from './joyose.js';
@@ -40,8 +40,8 @@ function renderAppList(app) {
         </div>`
       : html`<div class="empty card-outlined">
           ${icon('apps', 'big')}
-          <div>还没有应用配置</div>
-          <p class="hint flat">例如：王者荣耀在前台时使用「游戏」方案并锁定 120 Hz。</p>
+          <div>暂无应用配置</div>
+          <p class="hint flat">示例：王者荣耀位于前台时使用「游戏」方案，并将刷新率锁定为 120 Hz。</p>
         </div>`}
     <md-filled-tonal-button class="block-btn" @click=${() => app.editApp(null)}><span slot="icon">${icon('add')}</span>添加应用配置</md-filled-tonal-button>
   `;
@@ -58,7 +58,7 @@ function renderRefreshOptions(app) {
         <div class="avatar small">${icon('speed')}</div>
         <div class="grow">
           <div class="row-title">启用刷新率锁定</div>
-          <div class="row-sub">应用配置中的刷新率在应用前台时生效，避免「电量与性能」将游戏限制为 60 Hz</div>
+          <div class="row-sub">应用位于前台时按应用配置锁定刷新率上限，防止系统将其限制为 60 Hz</div>
         </div>
         <md-switch .selected=${rc.enabled} @change=${(e) => app.edit((c) => { ensure(c).enabled = e.target.selected; })}></md-switch>
       </label>
@@ -66,7 +66,7 @@ function renderRefreshOptions(app) {
         <div class="avatar small">${icon('shield')}</div>
         <div class="grow">
           <div class="row-title">过热保护时暂停锁定</div>
-          <div class="row-sub">过热保护触发期间交还系统控制，降低发热</div>
+          <div class="row-sub">过热保护触发期间由系统管理刷新率</div>
         </div>
         <md-switch .selected=${rc.respectGuard} @change=${(e) => app.edit((c) => { ensure(c).respectGuard = e.target.selected; })}></md-switch>
       </label>

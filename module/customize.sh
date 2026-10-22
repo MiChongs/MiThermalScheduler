@@ -3,7 +3,7 @@ DATA=/data/adb/mi_thermal_m3
 
 ui_print " "
 ui_print "  小米温控调度  $(grep_prop version $MODPATH/module.prop)"
-ui_print "  ──────────────────────────────"
+ui_print "  ------------------------------"
 
 if [ "$ARCH" != "arm64" ]; then
     abort "  ✖ 仅支持 arm64 设备"
@@ -24,14 +24,14 @@ fi
 
 ui_print "  设备  $(getprop ro.product.marketname) ($(getprop ro.product.device))"
 ui_print "  平台  $(getprop ro.soc.model)"
-ui_print "  系统  $(getprop ro.mi.os.version.name) · Android $(getprop ro.build.version.release)"
-ui_print "  ──────────────────────────────"
+ui_print "  系统  $(getprop ro.mi.os.version.name) Android $(getprop ro.build.version.release)"
+ui_print "  ------------------------------"
 
 mkdir -p $DATA
 if [ -f $DATA/config.json ]; then
-    ui_print "  ✔ 已保留现有方案与自动化规则"
+    ui_print "  已保留现有方案与规则"
 else
-    ui_print "  ✔ 默认不改动温控，启用前保持系统官方策略"
+    ui_print "  启用前将保持系统官方温控策略"
 fi
 
 # 模块被停用或删除后，由此脚本在开机时清理遗留的覆盖文件
@@ -39,5 +39,5 @@ mkdir -p /data/adb/service.d
 cp -f $MODPATH/cleanup.sh /data/adb/service.d/mi_thermal_m3_cleanup.sh
 chmod 0755 /data/adb/service.d/mi_thermal_m3_cleanup.sh
 
-ui_print "  ✔ 安装完成，重启后在 KernelSU 中打开 WebUI 进行配置"
+ui_print "  安装完成。重启设备后，请在 KernelSU 中打开 WebUI 进行配置。"
 ui_print " "

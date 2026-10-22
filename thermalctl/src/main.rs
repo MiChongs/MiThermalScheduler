@@ -4,6 +4,7 @@ mod daemon;
 mod install;
 mod paths;
 mod profile;
+mod refresh;
 mod stock;
 mod system;
 
@@ -204,6 +205,7 @@ fn run(cli: Cli) -> Result<()> {
                 "categories": conf::CATEGORIES.iter().map(|(id, name, desc)| json!({ "id": id, "name": name, "desc": desc })).collect::<Vec<_>>(),
                 "clusters": system::clusters(),
                 "gpu": system::gpu(),
+                "refreshRates": system::refresh_rates(),
             }));
         }
         Cmd::Scenes => {

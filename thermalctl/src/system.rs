@@ -195,3 +195,18 @@ pub fn foreground_packages() -> Vec<String> {
 }
 
 const LAUNCHERS: &[&str] = &["com.miui.home", "com.mi.android.globallauncher", "com.android.launcher3", "com.google.android.apps.nexuslauncher"];
+
+/// 屏幕支持的刷新率（Hz，降序），取自 DisplayManager 的模式列表
+pub fn refresh_rates() -> Vec<u32> {
+    let out = Command::new("dumpsys").arg("display").output().map(|o| String::from_utf8_lossy(&o.stdout).into_owned()).unwrap_or_default();
+    let Some(line) = out.lines().find(|l| l.contains("supportedModes [")) else { return Vec::new() };
+    let mut rates: Vec<u32> = line
+        .split("fps=")
+        .skip(1)
+        .filter_map(|s| s.split(|c: char| c != '.' && !c.is_ascii_digit()).next()?.parse::<f64>().ok())
+        .map(|f| f.round() as u32)
+        .collect();
+    rates.sort_unstable_by(|a, b| b.cmp(a));
+    rates.dedup();
+    rates
+}

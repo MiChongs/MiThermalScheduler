@@ -79,5 +79,64 @@ export function renderAuto(app) {
           <p class="hint flat">例如：打开游戏时切换到「游戏」，充电时切换到「快充」，熄屏时切换到「清凉」。</p>
         </div>`}
     <md-filled-tonal-button class="block-btn" @click=${() => app.editAutoRule(null)}><span slot="icon">${icon('add')}</span>添加规则</md-filled-tonal-button>
+
+    ${renderRefresh(app)}
+  `;
+}
+
+function renderRefresh(app) {
+  const rc = app.cfg.refresh ?? { enabled: true, respectGuard: true, rules: [] };
+  const st = app.status?.daemon.state;
+  const names = (pkgs) => {
+    const n = pkgs.map((p) => app.appLabel(p));
+    return `${n.slice(0, 3).join('、')}${n.length > 3 ? ` 等 ${n.length} 个应用` : ''}`;
+  };
+  const ensure = (c) => (c.refresh ??= { enabled: true, respectGuard: true, rules: [] });
+  return html`
+    <div class="section-head"><h2>应用刷新率</h2>${when(st?.refreshRate, () => html`<span class="hint-inline">正在锁定 ${st.refreshRate} Hz</span>`)}</div>
+    <div class="card-outlined">
+      <label class="list-row switch-row">
+        <div class="avatar small">${icon('speed')}</div>
+        <div class="grow">
+          <div class="row-title">启用应用刷新率</div>
+          <div class="row-sub">指定应用在前台时锁定刷新率上限，避免「电量与性能」将游戏限制为 60 Hz</div>
+        </div>
+        <md-switch .selected=${rc.enabled} @change=${(e) => app.edit((c) => { ensure(c).enabled = e.target.selected; })}></md-switch>
+      </label>
+      <label class="list-row switch-row">
+        <div class="avatar small">${icon('shield')}</div>
+        <div class="grow">
+          <div class="row-title">过热保护时暂停锁定</div>
+          <div class="row-sub">过热保护触发期间交还系统控制，降低发热</div>
+        </div>
+        <md-switch .selected=${rc.respectGuard} @change=${(e) => app.edit((c) => { ensure(c).respectGuard = e.target.selected; })}></md-switch>
+      </label>
+    </div>
+    ${rc.rules.length
+      ? html`<div class="rule-list">
+          ${rc.rules.map((r, i) => {
+            const active = st?.refreshRate && r.packages.includes(st.refreshPkg);
+            return html`<div class="auto-rule card-outlined ${r.enabled ? '' : 'off'} ${active ? 'active' : ''}">
+              <div class="list-row clickable" @click=${() => app.editRefreshRule(r)}>
+                <div class="avatar small">${icon('speed')}</div>
+                <div class="grow">
+                  <div class="row-title">${r.rate} Hz${when(active, () => html`<span class="tag accent">生效中</span>`)}</div>
+                  <div class="row-sub">${names(r.packages)}</div>
+                </div>
+                <md-switch .selected=${r.enabled} @click=${(e) => e.stopPropagation()} @change=${(e) => app.edit((c) => { c.refresh.rules[i].enabled = e.target.selected; })}></md-switch>
+              </div>
+              <div class="rule-actions">
+                <span class="grow"></span>
+                <md-icon-button @click=${() => app.deleteRefreshRule(i)}>${icon('delete')}</md-icon-button>
+              </div>
+            </div>`;
+          })}
+        </div>`
+      : html`<div class="empty card-outlined">
+          ${icon('speed', 'big')}
+          <div>还没有刷新率规则</div>
+          <p class="hint flat">例如：王者荣耀在前台时锁定 120 Hz，并在游戏内选择「极高」帧率。</p>
+        </div>`}
+    <md-filled-tonal-button class="block-btn" @click=${() => app.editRefreshRule(null)}><span slot="icon">${icon('add')}</span>添加刷新率规则</md-filled-tonal-button>
   `;
 }

@@ -118,6 +118,31 @@ impl Default for Guard {
     }
 }
 
+/// 应用刷新率规则：列表中的应用位于前台时，将系统刷新率上限锁定为 rate
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+#[serde(default, rename_all = "camelCase")]
+pub struct RefreshRule {
+    pub id: String,
+    pub enabled: bool,
+    pub packages: Vec<String>,
+    pub rate: u32,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(default, rename_all = "camelCase")]
+pub struct RefreshConfig {
+    pub enabled: bool,
+    /// 过热保护触发时暂停锁定，交还系统控制
+    pub respect_guard: bool,
+    pub rules: Vec<RefreshRule>,
+}
+
+impl Default for RefreshConfig {
+    fn default() -> Self {
+        RefreshConfig { enabled: true, respect_guard: true, rules: Vec::new() }
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(default, rename_all = "camelCase")]
 pub struct Config {
@@ -134,6 +159,7 @@ pub struct Config {
     pub immutable: bool,
     /// 守护进程轮询间隔（毫秒）
     pub interval: u64,
+    pub refresh: RefreshConfig,
 }
 
 impl Default for Config {
@@ -148,6 +174,7 @@ impl Default for Config {
             guard: Guard::default(),
             immutable: true,
             interval: 2000,
+            refresh: RefreshConfig::default(),
         }
     }
 }
@@ -260,6 +287,14 @@ impl Config {
         for r in self.rules.iter().filter(|r| r.enabled) {
             if self.find(&r.profile).is_none() {
                 bail!("自动化规则引用了不存在的方案「{}」", r.profile);
+            }
+        }
+        for r in self.refresh.rules.iter().filter(|r| r.enabled) {
+            if !(24..=240).contains(&r.rate) {
+                bail!("刷新率 {} Hz 超出有效范围", r.rate);
+            }
+            if r.packages.is_empty() {
+                bail!("应用刷新率规则未选择应用");
             }
         }
         if self.guard.release >= self.guard.trip {

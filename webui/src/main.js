@@ -268,14 +268,12 @@ class App extends LitElement {
   // ---------- 自动化 ----------
   editAutoRule(rule) {
     const r = rule ? clone(rule) : { id: uid('r'), enabled: true, kind: 'app', packages: [], value: 20, profile: 'gaming' };
-    let query = '';
+    const picker = { query: '' };
     const up = () => this.requestUpdate();
     const profiles = this.allProfiles();
     this.pushSheet({
       title: rule ? '编辑规则' : '添加规则',
       render: () => {
-        const apps = (this.apps ?? []).filter((a) => !query || a.label.toLowerCase().includes(query) || a.pkg.includes(query));
-        const picked = new Set(r.packages);
         return html`
           <div class="section-head first"><h2>条件</h2></div>
           <div class="trigger-grid">
@@ -300,20 +298,7 @@ class App extends LitElement {
             ${profiles.map((p) => html`<button class="pchip ${r.profile === p.id ? 'on' : ''}" @click=${() => { r.profile = p.id; up(); }}>${icon(p.icon || 'tune')}<span>${p.name}</span></button>`)}
           </div>
 
-          ${r.kind === 'app' ? html`
-            <div class="section-head"><h2>应用</h2><span class="hint-inline">已选 ${r.packages.length} 个</span></div>
-            <div class="search">${icon('search')}<input placeholder="搜索应用名称或包名" @input=${(e) => { query = e.target.value.toLowerCase(); up(); }}></div>
-            <div class="card-outlined app-list">
-              ${!this.apps ? html`<div class="placeholder">正在读取应用列表…</div>` : apps.slice(0, 300).map((a) => html`<label class="list-row clickable">
-                <div class="letter">${a.label.slice(0, 1)}</div>
-                <div class="grow"><div class="row-title">${a.label}</div><div class="row-sub mono">${a.pkg}</div></div>
-                <md-checkbox .checked=${picked.has(a.pkg)} @change=${(e) => {
-                  if (e.target.checked) r.packages = [...r.packages, a.pkg];
-                  else r.packages = r.packages.filter((x) => x !== a.pkg);
-                  up();
-                }}></md-checkbox>
-              </label>`)}
-            </div>` : ''}
+          ${r.kind === 'app' ? this.appPicker(r, picker) : ''}
         `;
       },
       save: async () => {
@@ -329,6 +314,64 @@ class App extends LitElement {
         }, '规则已保存');
       },
     });
+  }
+
+  /** 应用多选列表；target.packages 为已选包名，picker.query 为搜索词 */
+  appPicker(target, picker) {
+    const up = () => this.requestUpdate();
+    const q = picker.query;
+    const apps = (this.apps ?? []).filter((a) => !q || a.label.toLowerCase().includes(q) || a.pkg.includes(q));
+    const picked = new Set(target.packages);
+    return html`
+      <div class="section-head"><h2>应用</h2><span class="hint-inline">已选 ${target.packages.length} 个</span></div>
+      <div class="search">${icon('search')}<input placeholder="搜索应用名称或包名" @input=${(e) => { picker.query = e.target.value.toLowerCase(); up(); }}></div>
+      <div class="card-outlined app-list">
+        ${!this.apps ? html`<div class="placeholder">正在读取应用列表…</div>` : apps.slice(0, 300).map((a) => html`<label class="list-row clickable">
+          <div class="letter">${a.label.slice(0, 1)}</div>
+          <div class="grow"><div class="row-title">${a.label}</div><div class="row-sub mono">${a.pkg}</div></div>
+          <md-checkbox .checked=${picked.has(a.pkg)} @change=${(e) => {
+            if (e.target.checked) target.packages = [...target.packages, a.pkg];
+            else target.packages = target.packages.filter((x) => x !== a.pkg);
+            up();
+          }}></md-checkbox>
+        </label>`)}
+      </div>`;
+  }
+
+  // ---------- 应用刷新率 ----------
+  editRefreshRule(rule) {
+    const rates = this.info.refreshRates?.length ? this.info.refreshRates : [120, 90, 60];
+    const r = rule ? clone(rule) : { id: uid('f'), enabled: true, packages: [], rate: rates[0] };
+    const picker = { query: '' };
+    const up = () => this.requestUpdate();
+    this.pushSheet({
+      title: rule ? '编辑刷新率规则' : '添加刷新率规则',
+      render: () => html`
+        <div class="section-head first"><h2>刷新率上限</h2></div>
+        <div class="chip-scroll wrap">
+          ${rates.map((hz) => html`<button class="pchip ${r.rate === hz ? 'on' : ''}" @click=${() => { r.rate = hz; up(); }}>${icon('speed')}<span>${hz} Hz</span></button>`)}
+        </div>
+        <p class="hint">所选应用位于前台时，系统刷新率上限锁定为该值。游戏内帧率选项不应超过屏幕支持的最高刷新率。</p>
+        ${this.appPicker(r, picker)}
+      `,
+      save: async () => {
+        if (!r.packages.length) {
+          await this.ask({ title: '请至少选择一个应用', ok: '好', cancel: null });
+          return false;
+        }
+        return this.edit((c) => {
+          c.refresh ??= { enabled: true, respectGuard: true, rules: [] };
+          const i = c.refresh.rules.findIndex((x) => x.id === r.id);
+          if (i >= 0) c.refresh.rules[i] = r;
+          else c.refresh.rules.push(r);
+          c.refresh.enabled = true;
+        }, '刷新率规则已保存');
+      },
+    });
+  }
+
+  async deleteRefreshRule(i) {
+    if (await this.ask({ title: '删除这条刷新率规则？', ok: '删除', danger: true })) this.edit((c) => { c.refresh.rules.splice(i, 1); }, '已删除');
   }
 
   async deleteAutoRule(i) {

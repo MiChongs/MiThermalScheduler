@@ -34,6 +34,7 @@ export function renderHome(app) {
           <div><span>场景</span><b>${s.sceneLabel}</b></div>
           <div><span>sconfig</span><b>${s.sconfig}</b></div>
           ${when(s.daemon.state.foreground, () => html`<div><span>前台</span><b class="ellipsis">${app.appLabel(s.daemon.state.foreground)}</b></div>`)}
+          ${when(s.daemon.state.refreshRate, () => html`<div><span>刷新率</span><b>${s.daemon.state.refreshRate} Hz 锁定</b></div>`)}
         </div>
       </div>
     </section>

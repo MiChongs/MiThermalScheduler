@@ -2,7 +2,7 @@
 
 use crate::profile::{Config, Profile, STOCK_ID, TriggerKind, build_all};
 use crate::stock::Stock;
-use crate::{install, logln, paths, system};
+use crate::{install, logln, paths, refresh, system};
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -36,6 +36,9 @@ pub struct State {
     pub error: String,
     pub since: u64,
     pub generation: u64,
+    /// 当前锁定刷新率的应用与刷新率（0 表示未锁定）
+    pub refresh_pkg: String,
+    pub refresh_rate: u32,
 }
 
 impl State {
@@ -152,8 +155,9 @@ pub fn describe(cfg: &Config, st: &State) -> String {
     }
     let guard = if cfg.guard.enabled { format!("{:.0}°C", cfg.guard.trip) } else { "关闭".into() };
     let state = if st.guard { "过热保护中" } else { "运行中" };
+    let refresh = if st.refresh_rate > 0 { format!(" ｜ 刷新率锁定：{} Hz", st.refresh_rate) } else { String::new() };
     format!(
-        "【{state}】当前方案：{}（{}） ｜ 接管场景：{} 个 ｜ 过热保护：{guard} ｜ 自动化：{}",
+        "【{state}】当前方案：{}（{}） ｜ 接管场景：{} 个 ｜ 过热保护：{guard} ｜ 自动化：{}{refresh}",
         st.effective_name,
         st.reason,
         st.installed,
@@ -204,6 +208,7 @@ pub fn run() -> Result<()> {
     let mut last_desc = String::new();
     let mut force = true;
     let mut saved = State::default();
+    let mut rate_ctl = refresh::Controller::default();
 
     while !STOP.load(Ordering::SeqCst) {
         if RELOAD.swap(false, Ordering::SeqCst) || config_mtime() != mtime {
@@ -212,7 +217,8 @@ pub fn run() -> Result<()> {
             force = true;
             logln!("配置已重新加载");
         }
-        let needs_fg = cfg.enabled && cfg.automation && cfg.rules.iter().any(|r| r.enabled && r.kind == TriggerKind::App);
+        let needs_fg = (cfg.enabled && cfg.automation && cfg.rules.iter().any(|r| r.enabled && r.kind == TriggerKind::App))
+            || (cfg.refresh.enabled && cfg.refresh.rules.iter().any(|r| r.enabled));
         let inp = Inputs {
             temp: system::board_temp(),
             screen_on: system::screen_on(),
@@ -255,6 +261,9 @@ pub fn run() -> Result<()> {
             }
         }
 
+        rate_ctl.update(refresh::Controller::desired(&cfg.refresh, &inp.foreground, guard, module_disabled()), tick);
+        let (refresh_pkg, refresh_rate) = rate_ctl.active().cloned().unwrap_or_default();
+
         let new_state = State {
             effective: d.profile.id.clone(),
             effective_name: d.profile.name.clone(),
@@ -262,6 +271,8 @@ pub fn run() -> Result<()> {
             rule_id: d.rule_id,
             foreground: inp.foreground.first().cloned().unwrap_or_default(),
             guard,
+            refresh_pkg,
+            refresh_rate,
             ..st.clone()
         };
         st = new_state;
@@ -283,6 +294,7 @@ pub fn run() -> Result<()> {
             slept += 100;
         }
     }
+    rate_ctl.release();
     logln!("守护进程退出");
     let _ = fs::remove_file(paths::PID);
     Ok(())

@@ -1,6 +1,6 @@
 {
   "name": "mi-thermal-scheduler-webui",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "description": "小米温控调度 · Material 3 WebUI",
   "scripts": {
     "build": "node build.mjs"

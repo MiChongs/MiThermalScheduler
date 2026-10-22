@@ -143,6 +143,94 @@ impl Default for RefreshConfig {
     }
 }
 
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub enum JoyFpsMode {
+    /// 保持官方
+    Stock,
+    /// 温控限帧的温度门限整体上调
+    #[default]
+    Relax,
+    /// 关闭温控限帧
+    Off,
+}
+
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub enum JoyCpuMode {
+    /// 保持官方
+    Stock,
+    /// 游戏场景 CPU 上限不低于设定值
+    #[default]
+    Raise,
+    /// 游戏场景 CPU 上限设为满频
+    Max,
+}
+
+/// 充电加速：充电时在当前方案之上放宽充电限流规则
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(default, rename_all = "camelCase")]
+pub struct ChargeBoost {
+    pub enabled: bool,
+    /// 充电类规则的温度门限上调值（°C）
+    pub offset: f64,
+    /// 同时移除 SIC-BAT 充电电流 PID 控制
+    pub remove_sic: bool,
+}
+
+impl Default for ChargeBoost {
+    fn default() -> Self {
+        ChargeBoost { enabled: true, offset: 4.0, remove_sic: false }
+    }
+}
+
+impl ChargeBoost {
+    /// 在方案之上叠加充电放宽；充电类规则已被移除的方案保持不变
+    pub fn overlay(&self, p: &Profile) -> Profile {
+        let mut q = p.clone();
+        let r = q.categories.entry("charge".into()).or_default();
+        match r.mode {
+            Mode::Disable => {}
+            Mode::Keep => {
+                r.mode = Mode::Offset;
+                r.offset = self.offset;
+            }
+            Mode::Offset => r.offset = r.offset.max(self.offset),
+        }
+        if self.remove_sic {
+            q.rules.insert("*#SIC-BAT".into(), RuleOverride { disabled: true, ..Default::default() });
+        }
+        q.id = format!("{}+charge", p.id);
+        q.name = format!("{} · 充电加速", p.name);
+        q
+    }
+}
+
+/// Joyose（游戏加速服务）调教
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(default, rename_all = "camelCase")]
+pub struct JoyoseConfig {
+    pub enabled: bool,
+    pub fps_mode: JoyFpsMode,
+    /// 温控限帧门限上调值（°C）
+    pub fps_offset: f64,
+    pub cpu_mode: JoyCpuMode,
+    /// 各 CPU 簇的游戏频率上限下限（kHz），顺序与 Joyose 的 clusterList 一致
+    pub cpu_floor: Vec<u64>,
+}
+
+impl Default for JoyoseConfig {
+    fn default() -> Self {
+        JoyoseConfig {
+            enabled: false,
+            fps_mode: JoyFpsMode::Relax,
+            fps_offset: 4.0,
+            cpu_mode: JoyCpuMode::Raise,
+            cpu_floor: vec![2_265_600, 2_707_200, 2_707_200, 2_745_600],
+        }
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(default, rename_all = "camelCase")]
 pub struct Config {
@@ -160,6 +248,8 @@ pub struct Config {
     /// 守护进程轮询间隔（毫秒）
     pub interval: u64,
     pub refresh: RefreshConfig,
+    pub joyose: JoyoseConfig,
+    pub charge: ChargeBoost,
 }
 
 impl Default for Config {
@@ -175,6 +265,8 @@ impl Default for Config {
             immutable: true,
             interval: 2000,
             refresh: RefreshConfig::default(),
+            joyose: JoyoseConfig::default(),
+            charge: ChargeBoost::default(),
         }
     }
 }
@@ -296,6 +388,12 @@ impl Config {
             if r.packages.is_empty() {
                 bail!("应用刷新率规则未选择应用");
             }
+        }
+        if !(0.0..=10.0).contains(&self.charge.offset) {
+            bail!("充电加速上调值需在 0–10°C 之间");
+        }
+        if !(0.0..=15.0).contains(&self.joyose.fps_offset) {
+            bail!("Joyose 温控限帧上调值需在 0–15°C 之间");
         }
         if self.guard.release >= self.guard.trip {
             bail!("过热保护的恢复温度必须低于触发温度");
@@ -476,4 +574,28 @@ pub fn read_config_file(path: &str) -> Result<Config> {
     let cfg: Config = serde_json::from_str(&text).context("配置格式错误")?;
     cfg.validate()?;
     Ok(cfg)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn charge_overlay() {
+        let cb = ChargeBoost { enabled: true, offset: 4.0, remove_sic: true };
+        let stock = builtins().into_iter().find(|p| p.id == STOCK_ID).unwrap();
+        let o = cb.overlay(&stock);
+        assert_eq!(o.id, "stock+charge");
+        assert_eq!(o.categories["charge"], CatRule { mode: Mode::Offset, offset: 4.0 });
+        assert!(o.rules["*#SIC-BAT"].disabled);
+        // 方案自身更大的充电偏移保留
+        let fast = builtins().into_iter().find(|p| p.id == "charging").unwrap();
+        let mut p = fast.clone();
+        p.categories.get_mut("charge").unwrap().offset = 6.0;
+        assert_eq!(cb.overlay(&p).categories["charge"].offset, 6.0);
+        // 已移除充电规则的方案不变
+        let mut d = stock.clone();
+        d.categories.insert("charge".into(), CatRule { mode: Mode::Disable, offset: 0.0 });
+        assert_eq!(cb.overlay(&d).categories["charge"].mode, Mode::Disable);
+    }
 }

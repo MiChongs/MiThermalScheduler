@@ -494,6 +494,30 @@ class App extends LitElement {
     this.page = id;
     window.scrollTo({ top: 0 });
     if (id === 'logs') this.loadLogs();
+    if (id === 'auto') this.loadJoyose();
+  }
+
+  // ---------- Joyose ----------
+  async loadJoyose(delay = 0) {
+    if (delay) await new Promise((r) => setTimeout(r, delay));
+    try {
+      this.joyose = await ctl('joyose status');
+    } catch (e) {
+      this.joyose = { installed: false, error: e.message };
+    }
+    this.requestUpdate();
+  }
+
+  async joyoseApply() {
+    this.busy = '正在应用 Joyose 调教…';
+    try {
+      const r = await ctl('joyose apply');
+      this.joyose = r.status;
+      this.toast(r.result ?? '已是最新，无需重新应用');
+    } catch (e) {
+      await this.ask({ title: '应用失败', body: e.message, ok: '知道了', cancel: null });
+    }
+    this.busy = '';
   }
 
   // ---------- 渲染 ----------

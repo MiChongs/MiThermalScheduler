@@ -20,6 +20,9 @@ echo "==> 编译 thermalctl (aarch64-linux-android)"
 rustup target add aarch64-linux-android > /dev/null
 export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$TOOLCHAIN/bin/aarch64-linux-android${API}-clang"
 export CARGO_TARGET_AARCH64_LINUX_ANDROID_AR="$TOOLCHAIN/bin/llvm-ar"
+# rusqlite 内置的 SQLite 需要用 NDK 编译 C 代码
+export CC_aarch64_linux_android="$TOOLCHAIN/bin/aarch64-linux-android${API}-clang"
+export AR_aarch64_linux_android="$TOOLCHAIN/bin/llvm-ar"
 (cd thermalctl && cargo build --release --target aarch64-linux-android)
 mkdir -p module/bin
 cp thermalctl/target/aarch64-linux-android/release/thermalctl module/bin/thermalctl

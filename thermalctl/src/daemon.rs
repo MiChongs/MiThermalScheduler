@@ -2,7 +2,7 @@
 
 use crate::profile::{Config, Profile, STOCK_ID, TriggerKind, build_all};
 use crate::stock::Stock;
-use crate::{install, logln, paths, refresh, system};
+use crate::{install, joyose, logln, paths, refresh, system};
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -39,6 +39,9 @@ pub struct State {
     /// 当前锁定刷新率的应用与刷新率（0 表示未锁定）
     pub refresh_pkg: String,
     pub refresh_rate: u32,
+    /// Joyose 调教是否已注入
+    pub joyose: bool,
+    pub joyose_error: String,
 }
 
 impl State {
@@ -155,7 +158,10 @@ pub fn describe(cfg: &Config, st: &State) -> String {
     }
     let guard = if cfg.guard.enabled { format!("{:.0}°C", cfg.guard.trip) } else { "关闭".into() };
     let state = if st.guard { "过热保护中" } else { "运行中" };
-    let refresh = if st.refresh_rate > 0 { format!(" ｜ 刷新率锁定：{} Hz", st.refresh_rate) } else { String::new() };
+    let mut refresh = if st.refresh_rate > 0 { format!(" ｜ 刷新率锁定：{} Hz", st.refresh_rate) } else { String::new() };
+    if st.joyose {
+        refresh.push_str(" ｜ Joyose 调教");
+    }
     format!(
         "【{state}】当前方案：{}（{}） ｜ 接管场景：{} 个 ｜ 过热保护：{guard} ｜ 自动化：{}{refresh}",
         st.effective_name,
@@ -209,12 +215,14 @@ pub fn run() -> Result<()> {
     let mut force = true;
     let mut saved = State::default();
     let mut rate_ctl = refresh::Controller::default();
+    let mut joy_force = true;
 
     while !STOP.load(Ordering::SeqCst) {
         if RELOAD.swap(false, Ordering::SeqCst) || config_mtime() != mtime {
             cfg = Config::load();
             mtime = config_mtime();
             force = true;
+            joy_force = true;
             logln!("配置已重新加载");
         }
         let needs_fg = (cfg.enabled && cfg.automation && cfg.rules.iter().any(|r| r.enabled && r.kind == TriggerKind::App))
@@ -225,7 +233,12 @@ pub fn run() -> Result<()> {
             battery: system::battery(),
             foreground: if needs_fg { system::foreground_packages() } else { Vec::new() },
         };
-        let d = decide(&cfg, &inp, &mut guard, &mut active_rules);
+        let mut d = decide(&cfg, &inp, &mut guard, &mut active_rules);
+        // 充电加速：充电时（总开关开启、未触发过热保护）在当前方案之上放宽充电限流
+        if cfg.enabled && cfg.charge.enabled && inp.battery.charging && !guard && !module_disabled() {
+            d.profile = cfg.charge.overlay(&d.profile);
+            d.reason = format!("{} · 充电中", d.reason);
+        }
         let switching = current.as_ref().map(|(id, _)| id != &d.profile.id).unwrap_or(true);
 
         if switching || force {
@@ -259,6 +272,22 @@ pub fn run() -> Result<()> {
                     st.generation += 1;
                 }
             }
+        }
+
+        // Joyose 调教：配置变化时立即同步，平时每 30 个周期复核一次（被云控同步覆盖时重新注入）
+        if joy_force || tick % 30 == 0 {
+            joy_force = false;
+            let _l = install::lock()?;
+            match joyose::sync(&cfg.joyose, module_disabled()) {
+                Ok(_) => st.joyose_error.clear(),
+                Err(e) => {
+                    if st.joyose_error.is_empty() {
+                        logln!("Joyose 调教失败：{e:#}");
+                    }
+                    st.joyose_error = format!("{e:#}");
+                }
+            }
+            st.joyose = joyose::injected();
         }
 
         rate_ctl.update(refresh::Controller::desired(&cfg.refresh, &inp.foreground, guard, module_disabled()), tick);

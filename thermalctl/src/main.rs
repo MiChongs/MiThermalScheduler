@@ -2,6 +2,7 @@ mod conf;
 mod crypto;
 mod daemon;
 mod install;
+mod joyose;
 mod paths;
 mod profile;
 mod refresh;
@@ -79,8 +80,25 @@ enum Cmd {
     Decrypt { file: String },
     /// 加密明文为 mi_thermald 配置
     Encrypt { input: String, output: String },
+    /// Joyose（游戏加速服务）调教
+    Joyose {
+        #[command(subcommand)]
+        action: JoyAction,
+    },
     /// 运行守护进程
     Daemon,
+}
+
+#[derive(Subcommand)]
+enum JoyAction {
+    /// 调教状态与官方 / 调教后关键参数对比（JSON）
+    Status,
+    /// 立即按当前配置注入或还原
+    Apply,
+    /// 还原为官方配置
+    Restore,
+    /// 对指定的 booster_config params 文件预览调教结果（JSON）
+    Preview { file: String },
 }
 
 fn print(v: Value) {
@@ -291,6 +309,29 @@ fn run(cli: Cli) -> Result<()> {
         }
         Cmd::Decrypt { file } => print!("{}", crypto::decrypt_text(&fs::read(&file)?)?),
         Cmd::Encrypt { input, output } => fs::write(output, crypto::encrypt(&fs::read(input)?))?,
+        Cmd::Joyose { action } => {
+            let cfg = Config::load();
+            match action {
+                JoyAction::Status => print(joyose::status(&cfg.joyose)),
+                JoyAction::Apply | JoyAction::Restore => {
+                    let mut jc = cfg.joyose.clone();
+                    if matches!(action, JoyAction::Restore) {
+                        jc.enabled = false;
+                    }
+                    let result = {
+                        let _l = install::lock()?;
+                        joyose::sync(&jc, daemon::module_disabled())?
+                    };
+                    print(json!({ "ok": true, "result": result, "status": joyose::status(&cfg.joyose) }));
+                }
+                JoyAction::Preview { file } => {
+                    let params = fs::read_to_string(&file)?;
+                    let jc = profile::JoyoseConfig { enabled: true, ..cfg.joyose };
+                    let tuned = joyose::tune(&params, &jc)?;
+                    print(json!({ "official": joyose::summary(&params), "tuned": joyose::summary(&tuned), "bytes": tuned.len() }));
+                }
+            }
+        }
         Cmd::Daemon => daemon::run()?,
     }
     Ok(())

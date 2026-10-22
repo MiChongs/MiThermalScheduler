@@ -75,7 +75,7 @@ export function renderHome(app) {
     <div class="section-head"><h2>电池</h2></div>
     <div class="card-outlined pad kv4">
       <div><span>电量</span><b>${s.battery.level}%</b></div>
-      <div><span>${s.battery.charging ? '充电' : '放电'}</span><b>${Math.abs(s.battery.currentMa)} mA</b></div>
+      <div><span>${s.battery.charging ? (s.daemon.state.effective?.endsWith('+charge') ? '充电 · 加速' : '充电') : '放电'}</span><b>${Math.abs(s.battery.currentMa)} mA</b></div>
       <div><span>温度</span><b>${fmtT(s.battery.temp)}°C</b></div>
       <div><span>屏幕</span><b>${s.screenOn ? '亮屏' : '熄屏'}</b></div>
     </div>

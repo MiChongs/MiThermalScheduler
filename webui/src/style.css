@@ -366,6 +366,20 @@ textarea.code:focus { outline: 2px solid var(--md-sys-color-primary); border-col
 .app-list .list-row { min-height: 60px; }
 .letter { display: grid; place-items: center; width: 40px; height: 40px; flex: none; border-radius: 50%; background: var(--md-sys-color-tertiary-container); color: var(--md-sys-color-on-tertiary-container); font-weight: 500; }
 
+/* ---------- Joyose ---------- */
+.floor-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; margin-top: 12px; }
+.floor-item { display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
+.floor-item small { margin-left: 6px; color: var(--md-sys-color-on-surface-variant); }
+.floor-item .native-select { width: 100%; }
+.joy-compare { margin-top: 12px; }
+.cmp-head { display: flex; justify-content: space-between; margin-bottom: 6px; font-size: 12px; color: var(--md-sys-color-on-surface-variant); font-variant-numeric: tabular-nums; }
+.cmp-row { padding: 10px 0; border-top: 1px solid var(--md-sys-color-outline-variant); }
+.cmp-name { font-size: 13px; font-weight: 500; margin-bottom: 4px; }
+.cmp-vals { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; font-size: 13px; }
+.cmp-old { color: var(--md-sys-color-on-surface-variant); }
+.cmp-new { color: var(--md-sys-color-primary); font-weight: 500; }
+.cmp-same { font-size: 12px; color: var(--md-sys-color-on-surface-variant); }
+
 /* ---------- 日志 ---------- */
 .log-row { display: flex; align-items: center; gap: 12px; padding: 10px 16px; }
 .log-row .row-title { font-size: 14px; }

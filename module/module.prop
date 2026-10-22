@@ -1,0 +1,7 @@
+id=mi_thermal_m3
+name=小米温控调度
+version=v2.1.0
+versionCode=210
+author=chuanyi
+description=小米 / Redmi 设备温控调度模块。基于 mi_thermald 场景配置覆盖实现，提供多套预设方案、按应用与系统状态自动切换、过热保护以及可视化规则编辑。安装后请在 WebUI 中完成配置。
+updateJson=https://raw.githubusercontent.com/MiChongs/MiThermalScheduler/main/update.json

@@ -1,0 +1,11 @@
+# 构建产物
+/dist/
+/module/bin/
+/module/webroot/
+/thermalctl/target/
+/webui/node_modules/
+/webui/src/icons.gen.js
+
+# 本地工具
+/.claude/
+.DS_Store

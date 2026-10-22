@@ -74,6 +74,7 @@ class App extends LitElement {
     try {
       this.info = await ctl('info');
       this.cfg = clone(this.info.config);
+      this.savedCfg = clone(this.cfg);
       await this.poll();
       this.loadScenes();
       listApps().then((apps) => { this.apps = apps; for (const a of apps) this.labels.set(a.pkg, a.label); this.requestUpdate(); });
@@ -140,23 +141,42 @@ class App extends LitElement {
     return this.labels.get(pkg) ?? pkg;
   }
 
-  /** 修改配置并保存，失败时回滚 */
+  /**
+   * 修改配置并保存。界面立即更新；保存串行进行，连续修改只保存最后的配置。
+   * 校验失败时回滚到最近一次保存成功的配置。
+   */
   async edit(mutate, msg) {
-    const before = clone(this.cfg);
+    this.savedCfg ??= clone(this.cfg);
     mutate(this.cfg);
     this.requestUpdate();
-    try {
-      const r = await saveConfig(this.cfg);
-      if (r.warning) this.toast(`已保存，但应用失败：${r.warning}`);
-      else if (msg) this.toast(msg);
-      setTimeout(() => this.poll(), 300);
-      return true;
-    } catch (e) {
-      this.cfg = before;
-      this.requestUpdate();
-      await this.ask({ title: '保存失败', body: e.message, ok: '知道了', cancel: null });
-      return false;
+    this.saveDirty = true;
+    if (msg) this.pendingMsg = msg;
+    if (!this.saving) this.saving = this.flushSave();
+    return this.saving;
+  }
+
+  async flushSave() {
+    let ok = true;
+    while (this.saveDirty) {
+      this.saveDirty = false;
+      const snapshot = clone(this.cfg);
+      try {
+        const r = await saveConfig(snapshot);
+        this.savedCfg = snapshot;
+        if (r.warning) this.toast(`已保存，但应用失败：${r.warning}`);
+        else if (!this.saveDirty && this.pendingMsg) this.toast(this.pendingMsg);
+      } catch (e) {
+        ok = false;
+        this.saveDirty = false;
+        this.cfg = clone(this.savedCfg);
+        this.requestUpdate();
+        await this.ask({ title: '保存失败', body: e.message, ok: '知道了', cancel: null });
+      }
     }
+    this.pendingMsg = null;
+    this.saving = null;
+    setTimeout(() => this.poll(), 1500);
+    return ok;
   }
 
   // ---------- 方案 ----------

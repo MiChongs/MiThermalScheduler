@@ -7,7 +7,8 @@ let seq = 0;
 
 export const hasKsu = () => typeof window.ksu !== 'undefined';
 
-export function exec(cmd) {
+/** ksu.exec 是同步接口，执行期间会阻塞页面；仅在 spawn 不可用时使用 */
+function execBlocking(cmd) {
   return new Promise((resolve) => {
     const cb = `__ksu_cb_${Date.now()}_${seq++}`;
     window[cb] = (errno, stdout, stderr) => {
@@ -23,9 +24,38 @@ export function exec(cmd) {
   });
 }
 
+/** 通过异步的 ksu.spawn 执行 shell 命令，不阻塞页面；输出按行回传 */
+export function exec(cmd) {
+  if (typeof window.ksu?.spawn !== 'function') return execBlocking(cmd);
+  return new Promise((resolve) => {
+    const name = `__ksu_spawn_${Date.now()}_${seq++}`;
+    const out = [];
+    const err = [];
+    const finish = (r) => {
+      delete window[name];
+      resolve(r);
+    };
+    window[name] = {
+      stdout: { emit: (ev, data) => { if (ev === 'data') out.push(data); } },
+      stderr: { emit: (ev, data) => { if (ev === 'data') err.push(data); } },
+      stdin: { emit: () => {} },
+      emit: (ev, arg) => {
+        if (ev === 'exit') finish({ errno: Number(arg) || 0, stdout: out.join('\n'), stderr: err.join('\n') });
+        else if (ev === 'error') finish({ errno: -1, stdout: out.join('\n'), stderr: String(arg) });
+      },
+    };
+    try {
+      window.ksu.spawn('sh', JSON.stringify(['-c', cmd]), '{}', name);
+    } catch {
+      delete window[name];
+      execBlocking(cmd).then(resolve);
+    }
+  });
+}
+
 /** 运行 thermalctl 子命令并解析 JSON 输出 */
-export async function ctl(args) {
-  const r = await exec(`${BIN} ${args}`);
+export async function ctl(args, prefix = '') {
+  const r = await exec(`${prefix}${BIN} ${args}`);
   let data;
   try {
     data = JSON.parse(r.stdout);
@@ -62,6 +92,12 @@ export async function writeTemp(name, content) {
 }
 
 export async function saveConfig(cfg) {
+  const b64 = toB64(JSON.stringify(cfg));
+  // 常见大小的配置一次调用完成写入与保存
+  if (b64.length < 100000) {
+    const path = `${TMP}/config.json`;
+    return ctl(`save ${path}`, `mkdir -p ${TMP} && echo '${b64}' | base64 -d > ${path} && `);
+  }
   const path = await writeTemp('config.json', JSON.stringify(cfg));
   return ctl(`save ${path}`);
 }

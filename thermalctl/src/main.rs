@@ -251,10 +251,14 @@ fn run(cli: Cli) -> Result<()> {
             }
             let _ = fs::remove_file(&file);
             logln!("配置已保存（默认方案 {}，总开关 {}）", cfg.active, if cfg.enabled { "开" } else { "关" });
-            // 配置已经落盘；应用失败只作为警告返回，避免界面误以为未保存
-            match apply_now() {
-                Ok(r) => print(json!({ "ok": true, "result": r })),
-                Err(e) => print(json!({ "ok": true, "warning": format!("{e:#}") })),
+            // 守护进程运行时只通知它在后台应用，立即返回，避免界面等待；结果通过 status 反映
+            if daemon::notify() {
+                print(json!({ "ok": true, "queued": true }));
+            } else {
+                match apply_now() {
+                    Ok(r) => print(json!({ "ok": true, "result": r })),
+                    Err(e) => print(json!({ "ok": true, "warning": format!("{e:#}") })),
+                }
             }
         }
         Cmd::Preview { profile: pid, file, scene } => {

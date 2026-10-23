@@ -6,6 +6,7 @@ function summary(app, p) {
   const out = [];
   const names = Object.fromEntries(app.info.categories.map((c) => [c.id, c.name]));
   for (const [id, r] of Object.entries(p.categories ?? {})) {
+    if (r.mode === 'offset' && r.start) out.push(`${names[id] ?? id} ${r.start}°C 起控`);
     if (r.mode === 'offset' && r.offset) out.push(`${names[id] ?? id} ${r.offset > 0 ? '+' : ''}${r.offset}°C`);
     if (r.mode === 'disable') out.push(`${names[id] ?? id} 已移除`);
   }

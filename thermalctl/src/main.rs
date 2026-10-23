@@ -316,9 +316,9 @@ fn run(cli: Cli) -> Result<()> {
         Cmd::Joyose { action } => {
             let cfg = Config::load();
             match action {
-                JoyAction::Status => print(joyose::status(&cfg.joyose)),
+                JoyAction::Status => print(joyose::status(&cfg.joyose_effective())),
                 JoyAction::Apply | JoyAction::Restore => {
-                    let mut jc = cfg.joyose.clone();
+                    let mut jc = cfg.joyose_effective();
                     if matches!(action, JoyAction::Restore) {
                         jc.enabled = false;
                     }
@@ -326,11 +326,11 @@ fn run(cli: Cli) -> Result<()> {
                         let _l = install::lock()?;
                         joyose::sync(&jc, daemon::module_disabled())?
                     };
-                    print(json!({ "ok": true, "result": result, "status": joyose::status(&cfg.joyose) }));
+                    print(json!({ "ok": true, "result": result, "status": joyose::status(&cfg.joyose_effective()) }));
                 }
                 JoyAction::Preview { file } => {
                     let params = fs::read_to_string(&file)?;
-                    let jc = profile::JoyoseConfig { enabled: true, ..cfg.joyose };
+                    let jc = profile::JoyoseConfig { enabled: true, ..cfg.joyose_effective() };
                     let tuned = joyose::tune(&params, &jc)?;
                     print(json!({ "official": joyose::summary(&params), "tuned": joyose::summary(&tuned), "bytes": tuned.len() }));
                 }

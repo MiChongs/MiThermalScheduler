@@ -140,7 +140,7 @@ export function renderJoyose(app) {
           <span>已加载版本 ${st.loadedVersion ?? '—'}</span>
         </div>
         ${compare(st)}
-        <p class="hint flat">调教配置基于设备上最新的官方配置生成，官方配置更新后将自动重新生成。</p>
+        <p class="hint flat">调教配置基于设备上最新的官方配置生成，官方配置更新后将自动重新生成。${app.cfg.guard.enabled ? `放宽后的限帧温度不超过过热保护触发温度 ${app.cfg.guard.trip}°C。` : ''}</p>
       </div>
       <md-filled-tonal-button class="block-btn" @click=${() => app.joyoseApply()}><span slot="icon">${icon('restart_alt')}</span>立即重新应用</md-filled-tonal-button>
     `)}

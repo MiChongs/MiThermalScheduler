@@ -374,10 +374,18 @@ fn fmt_temp(t: f64) -> String {
     if (t - t.round()).abs() < 1e-6 { format!("{}", t.round() as i64) } else { format!("{:.1}", t) }
 }
 
+/// 一组温度门限的实际放宽量：设置了放宽上限时，最高门限放宽后不超过上限（不低于官方值）
+fn table_offset(temps: impl Iterator<Item = f64>, ctx: &Ctx) -> f64 {
+    let off = ctx.cfg.fps_offset;
+    let Some(cap) = ctx.cfg.ceiling else { return off };
+    let max = temps.filter(|t| *t >= 30.0).fold(f64::NEG_INFINITY, f64::max);
+    if max.is_finite() { off.min((cap - max).max(0.0)) } else { off }
+}
+
 /// 温度门限：≥30°C 的才视为温控门限（10:0 这类起始项保持不变）
-fn shift_temp(key: &str, ctx: &Ctx) -> String {
+fn shift_temp(key: &str, off: f64, ctx: &Ctx) -> String {
     match key.trim().parse::<f64>() {
-        Ok(t) if t >= 30.0 && ctx.cfg.fps_mode == JoyFpsMode::Relax => fmt_temp(t + ctx.cfg.fps_offset),
+        Ok(t) if t >= 30.0 && ctx.cfg.fps_mode == JoyFpsMode::Relax => fmt_temp(t + off),
         _ => key.to_string(),
     }
 }
@@ -409,17 +417,26 @@ enum Table {
 }
 
 fn map_tv(body: &str, table: Table, ctx: &Ctx) -> String {
-    split_items(body)
+    let items = split_items(body);
+    // PID 表的目标温度（参数首项）同样计入放宽上限
+    let off = table_offset(
+        items.iter().filter_map(|it| it.split_once(':')).flat_map(|(k, v)| {
+            let target = (table == Table::Pid).then(|| v.split(' ').next().and_then(|x| x.trim().parse::<f64>().ok())).flatten();
+            k.trim().parse::<f64>().ok().into_iter().chain(target)
+        }),
+        ctx,
+    );
+    items
         .into_iter()
         .map(|item| {
             let Some((k, v)) = item.split_once(':') else { return item.to_string() };
-            let key = shift_temp(k, ctx);
+            let key = shift_temp(k, off, ctx);
             let val = match table {
                 Table::Fps if ctx.cfg.fps_mode == JoyFpsMode::Off && k.trim().parse::<f64>().map(|t| t >= 30.0).unwrap_or(false) => "0".to_string(),
                 Table::Pid => {
                     let mut parts = v.splitn(2, ' ');
                     let first = parts.next().unwrap_or("");
-                    let first = shift_temp(first, ctx);
+                    let first = shift_temp(first, off, ctx);
                     match parts.next() {
                         Some(rest) => format!("{first} {rest}"),
                         None => first,
@@ -452,10 +469,11 @@ fn map_temp_cmd(s: &str, ctx: &Ctx) -> String {
                 Some((h, b)) => (format!("{h}@"), b),
                 None => (String::new(), seg),
             };
+            let off = table_offset(body.split('$').filter_map(|it| it.split_once(':')).filter_map(|(t, _)| t.trim().parse::<f64>().ok()), ctx);
             let items: Vec<String> = body
                 .split('$')
                 .map(|it| match it.split_once(':') {
-                    Some((t, cmd)) => format!("{}:{}", shift_temp(t, ctx), raise_ma(cmd, ctx)),
+                    Some((t, cmd)) => format!("{}:{}", shift_temp(t, off, ctx), raise_ma(cmd, ctx)),
                     None => it.to_string(),
                 })
                 .collect();
@@ -502,7 +520,8 @@ fn transform_str(key: &str, s: &str, ctx: &Ctx, in_end: bool) -> String {
         return map_df_cmd(s, ctx);
     }
     if key == "glk_max_change_temp" && ctx.cfg.fps_mode == JoyFpsMode::Relax {
-        return shift_temp(s, ctx);
+        let off = table_offset(s.trim().parse::<f64>().ok().into_iter(), ctx);
+        return shift_temp(s, off, ctx);
     }
     if key == "cmd" && !in_end {
         return raise_ma(s, ctx);
@@ -539,7 +558,7 @@ fn walk_value(key: &str, v: &mut Value, ctx: &Ctx, in_end: bool) {
         }
         Value::Number(n) if key == "glk_max_change_temp" && ctx.cfg.fps_mode == JoyFpsMode::Relax => {
             if let Some(t) = n.as_f64() {
-                let shifted = if t >= 30.0 { t + ctx.cfg.fps_offset } else { t };
+                let shifted = if t >= 30.0 { t + table_offset(std::iter::once(t), ctx) } else { t };
                 *v = serde_json::Number::from_f64(shifted).map(Value::Number).unwrap_or(Value::Null);
             }
         }
@@ -617,7 +636,7 @@ mod tests {
     use super::*;
 
     fn cfg(fps: JoyFpsMode, cpu: JoyCpuMode) -> JoyoseConfig {
-        JoyoseConfig { enabled: true, fps_mode: fps, fps_offset: 4.0, cpu_mode: cpu, cpu_floor: vec![2265600, 2707200, 2707200, 2745600] }
+        JoyoseConfig { enabled: true, fps_mode: fps, fps_offset: 4.0, cpu_mode: cpu, cpu_floor: vec![2265600, 2707200, 2707200, 2745600], ceiling: None }
     }
 
     fn sample() -> String {
@@ -691,5 +710,18 @@ mod tests {
         assert_eq!(s["foregroundMa"], json!([1440000, 2131200, 2131200, 1939200]));
         assert_eq!(s["sgamePid120"], "120#10:0 0 0 0 0 0,44.5:45 120 90 20 2 3");
         assert_eq!(s["sgameDfMa"]["110"], json!([1248000, 2438400, 2188800, 1824000]));
+    }
+
+    #[test]
+    fn relax_respects_ceiling() {
+        let mut c = cfg(JoyFpsMode::Relax, JoyCpuMode::Stock);
+        c.fps_offset = 8.0;
+        c.ceiling = Some(50.0);
+        let tuned = tune(&sample(), &c).unwrap();
+        let s = summary(&tuned);
+        let text = s.to_string();
+        // 王者荣耀 45/46°C 门限最多放宽到 49/50°C
+        assert!(text.contains("49:110") && text.contains("50:90"), "{text}");
+        assert!(!text.contains("53:110"), "{text}");
     }
 }

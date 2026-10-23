@@ -91,10 +91,10 @@ function renderGuard(app) {
       ${when(g.enabled, () => html`
         <div class="slider-block">
           <div class="slider-label"><span>触发温度</span><b>${g.trip}°C</b></div>
-          <md-slider min="40" max="60" step="1" labeled .value=${g.trip} @change=${(e) => app.edit((c) => { c.guard.trip = e.target.value; if (c.guard.release >= c.guard.trip) c.guard.release = c.guard.trip - 3; })}></md-slider>
+          <md-slider min="44" max="58" step="1" labeled .value=${g.trip} @change=${(e) => app.edit((c) => { c.guard.trip = e.target.value; if (c.guard.release >= c.guard.trip) c.guard.release = c.guard.trip - 3; })}></md-slider>
           <div class="slider-label"><span>恢复温度</span><b>${g.release}°C</b></div>
           <md-slider min="35" max=${g.trip - 1} step="1" labeled .value=${g.release} @change=${(e) => app.edit((c) => { c.guard.release = e.target.value; })}></md-slider>
-          <p class="hint flat">温度以温控传感器 VIRTUAL-SENSOR0 为准，该数值接近机身温度。系统高温提示约自 45°C 开始。</p>
+          <p class="hint flat">温度以温控传感器 VIRTUAL-SENSOR0 为准，该数值接近机身温度。触发温度同时是各方案与 Joyose 限帧的放宽上限：放宽后的触发温度不会超过该值，保证达到保护温度前温控已逐级生效。</p>
         </div>
       `)}
     </div>

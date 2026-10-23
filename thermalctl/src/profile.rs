@@ -9,6 +9,8 @@ use std::collections::BTreeMap;
 use std::fs;
 
 pub const STOCK_ID: &str = "stock";
+/// v3：过热保护默认值调整为 50 / 46°C
+const CONFIG_VERSION: u32 = 3;
 
 #[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -25,6 +27,8 @@ pub struct CatRule {
     pub mode: Mode,
     /// 阈值偏移，单位 °C，可为负数（更早降频）
     pub offset: f64,
+    /// 起控温度（°C）：首档触发温度低于此值时，将整条曲线压缩到此温度与上限之间；0 表示不设置
+    pub start: f64,
 }
 
 /// 单条规则的精确覆盖。key 形如 "thermal-normal.conf#SS-CPU7"，"*#SS-CPU7" 表示所有场景
@@ -78,6 +82,9 @@ pub struct Profile {
     pub gpu_max_level: Option<u32>,
     pub rules: BTreeMap<String, RuleOverride>,
     pub scenes: BTreeMap<String, SceneOverride>,
+    /// 放宽上限（°C）：放宽后的触发温度不超过此值，取自过热保护触发温度，运行时设置
+    #[serde(skip)]
+    pub ceiling: Option<f64>,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
@@ -114,7 +121,7 @@ pub struct Guard {
 
 impl Default for Guard {
     fn default() -> Self {
-        Guard { enabled: true, trip: 48.0, release: 43.0 }
+        Guard { enabled: true, trip: 50.0, release: 46.0 }
     }
 }
 
@@ -232,6 +239,9 @@ pub struct JoyoseConfig {
     pub cpu_mode: JoyCpuMode,
     /// 各 CPU 簇的游戏频率上限下限（kHz），顺序与 Joyose 的 clusterList 一致
     pub cpu_floor: Vec<u64>,
+    /// 限帧温度的放宽上限（°C），取自过热保护触发温度，运行时设置
+    #[serde(skip)]
+    pub ceiling: Option<f64>,
 }
 
 impl Default for JoyoseConfig {
@@ -242,6 +252,7 @@ impl Default for JoyoseConfig {
             fps_offset: 4.0,
             cpu_mode: JoyCpuMode::Raise,
             cpu_floor: vec![2_265_600, 2_707_200, 2_707_200, 2_745_600],
+            ceiling: None,
         }
     }
 }
@@ -274,7 +285,7 @@ pub struct Config {
 impl Default for Config {
     fn default() -> Self {
         Config {
-            version: 2,
+            version: CONFIG_VERSION,
             enabled: false,
             active: "balanced".into(),
             profiles: Vec::new(),
@@ -291,11 +302,11 @@ impl Default for Config {
     }
 }
 
-fn cats(list: &[(&str, Mode, f64)]) -> BTreeMap<String, CatRule> {
-    list.iter().map(|(id, mode, offset)| (id.to_string(), CatRule { mode: *mode, offset: *offset })).collect()
+fn cats(list: &[(&str, Mode, f64, f64)]) -> BTreeMap<String, CatRule> {
+    list.iter().map(|(id, mode, offset, start)| (id.to_string(), CatRule { mode: *mode, offset: *offset, start: *start })).collect()
 }
 
-fn preset(id: &str, name: &str, icon: &str, risk: u8, desc: &str, c: &[(&str, Mode, f64)]) -> Profile {
+fn preset(id: &str, name: &str, icon: &str, risk: u8, desc: &str, c: &[(&str, Mode, f64, f64)]) -> Profile {
     Profile {
         id: id.into(),
         name: name.into(),
@@ -310,13 +321,15 @@ fn preset(id: &str, name: &str, icon: &str, risk: u8, desc: &str, c: &[(&str, Mo
 
 pub fn builtins() -> Vec<Profile> {
     use Mode::*;
+    // 官方日常场景中，大核自 25°C 起即开始降频，GPU 自 15°C 起限制等级；
+    // 起控温度把这些常驻限制推迟到指定温度，偏移决定最高档的推迟幅度，两者均不超过过热保护触发温度
     let mut gaming = preset(
         "gaming",
         "游戏",
         "gamepad",
         1,
-        "CPU、GPU 与 NPU 降频阈值提高 8°C，并为大核设置 1.5 GHz 降频下限，减少高负载场景下的掉帧。建议在应用配置中为游戏指定此方案。",
-        &[("cpu", Offset, 8.0), ("gpu", Offset, 8.0), ("npu", Offset, 8.0), ("display", Offset, 6.0), ("net", Offset, 5.0)],
+        "CPU、GPU 与 NPU 自 42°C 起降频，最高档推迟 6°C；大核降频下限 1.5 GHz，GPU 降频等级不超过 1。建议在应用配置中为游戏指定此方案。",
+        &[("cpu", Offset, 6.0, 42.0), ("gpu", Offset, 6.0, 42.0), ("npu", Offset, 6.0, 42.0), ("display", Offset, 6.0, 0.0), ("net", Offset, 5.0, 0.0)],
     );
     gaming.cpu_floor = [("cpu2", 1_497_600), ("cpu5", 1_497_600), ("cpu7", 1_478_400)].iter().map(|(k, v)| (k.to_string(), *v)).collect();
     gaming.gpu_max_level = Some(1);
@@ -327,25 +340,32 @@ pub fn builtins() -> Vec<Profile> {
             "清凉",
             "ac_unit",
             0,
-            "CPU、GPU 与 NPU 降频阈值降低 3°C，机身温度更低，续航更长，适合日常使用与高温环境。",
-            &[("cpu", Offset, -3.0), ("gpu", Offset, -3.0), ("npu", Offset, -3.0)],
+            "CPU、GPU 与 NPU 降频阈值降低 2°C，机身温度更低，续航更长，适合高温环境。",
+            &[("cpu", Offset, -2.0, 0.0), ("gpu", Offset, -2.0, 0.0), ("npu", Offset, -2.0, 0.0)],
         ),
-        preset("light", "轻度", "eco", 0, "CPU、GPU 与 NPU 降频阈值提高 3°C，对机身温度影响较小。", &[("cpu", Offset, 3.0), ("gpu", Offset, 3.0), ("npu", Offset, 3.0)]),
+        preset(
+            "light",
+            "轻度",
+            "eco",
+            0,
+            "CPU、GPU 与 NPU 自 38°C 起降频，最高档推迟 2°C。日常使用时不再常驻限频。",
+            &[("cpu", Offset, 2.0, 38.0), ("gpu", Offset, 2.0, 38.0), ("npu", Offset, 2.0, 38.0)],
+        ),
         preset(
             "balanced",
             "均衡",
             "balance",
             0,
-            "CPU、GPU 与 NPU 降频阈值提高 6°C，亮度限制阈值提高 3°C，兼顾性能与温度。",
-            &[("cpu", Offset, 6.0), ("gpu", Offset, 6.0), ("npu", Offset, 6.0), ("display", Offset, 3.0)],
+            "CPU、GPU 与 NPU 自 40°C 起降频，最高档推迟 4°C，亮度限制推迟 3°C，兼顾性能与温度。",
+            &[("cpu", Offset, 4.0, 40.0), ("gpu", Offset, 4.0, 40.0), ("npu", Offset, 4.0, 40.0), ("display", Offset, 3.0, 0.0)],
         ),
         preset(
             "performance",
             "性能",
             "speed",
             1,
-            "CPU、GPU 与 NPU 降频阈值提高 10°C，同时放宽亮度与网络限制，适用于长时间高负载。",
-            &[("cpu", Offset, 10.0), ("gpu", Offset, 10.0), ("npu", Offset, 10.0), ("display", Offset, 5.0), ("net", Offset, 5.0)],
+            "CPU、GPU 与 NPU 自 42°C 起降频，最高档推迟 8°C，同时放宽亮度与网络限制，适用于长时间高负载。",
+            &[("cpu", Offset, 8.0, 42.0), ("gpu", Offset, 8.0, 42.0), ("npu", Offset, 8.0, 42.0), ("display", Offset, 5.0, 0.0), ("net", Offset, 5.0, 0.0)],
         ),
         gaming,
         preset(
@@ -354,7 +374,7 @@ pub fn builtins() -> Vec<Profile> {
             "bolt",
             1,
             "充电限流阈值提高 4°C，其余规则保持官方设置。建议通过「充电时」场景规则启用。",
-            &[("charge", Offset, 4.0)],
+            &[("charge", Offset, 4.0, 0.0)],
         ),
         preset(
             "extreme",
@@ -362,7 +382,7 @@ pub fn builtins() -> Vec<Profile> {
             "local_fire_department",
             2,
             "移除 CPU、GPU、NPU 降频与亮度限制，仅保留充电、高温保护与低电量保护规则。使用此方案时必须启用过热保护。",
-            &[("cpu", Disable, 0.0), ("gpu", Disable, 0.0), ("npu", Disable, 0.0), ("display", Disable, 0.0), ("net", Offset, 8.0)],
+            &[("cpu", Disable, 0.0, 0.0), ("gpu", Disable, 0.0, 0.0), ("npu", Disable, 0.0, 0.0), ("display", Disable, 0.0, 0.0), ("net", Offset, 8.0, 0.0)],
         ),
     ]
 }
@@ -406,10 +426,19 @@ impl Config {
             }
             app.enabled |= enabled;
         }
+        let mut changed = false;
+        if self.version < CONFIG_VERSION {
+            // 旧默认值 48 / 43°C 低于方案的放宽范围，升级为新默认值；用户自定义的值保留
+            if self.guard.trip == 48.0 && self.guard.release == 43.0 {
+                self.guard = Guard { enabled: self.guard.enabled, ..Guard::default() };
+            }
+            self.version = CONFIG_VERSION;
+            changed = true;
+        }
         let legacy_app: Vec<AutoRule> = self.rules.iter().filter(|r| r.kind == TriggerKind::App).cloned().collect();
         let legacy_refresh = std::mem::take(&mut self.refresh.rules);
         if legacy_app.is_empty() && legacy_refresh.is_empty() {
-            return false;
+            return changed;
         }
         self.rules.retain(|r| r.kind != TriggerKind::App);
         for r in &legacy_app {
@@ -466,13 +495,38 @@ impl Config {
         if self.guard.release >= self.guard.trip {
             bail!("过热保护的恢复温度必须低于触发温度");
         }
+        if self.guard.enabled {
+            if let Some(r) = self.rules.iter().find(|r| r.enabled && r.kind == TriggerKind::TempAbove && r.value >= self.guard.trip) {
+                bail!("「高温时」场景规则的温度（{}°C）需低于过热保护触发温度（{}°C）", r.value, self.guard.trip);
+            }
+        }
+        for p in &self.profiles {
+            if p.categories.values().any(|c| c.start != 0.0 && !(30.0..=60.0).contains(&c.start)) {
+                bail!("方案「{}」的起控温度需在 30–60°C 之间", p.name);
+            }
+        }
         Ok(())
+    }
+
+    /// 放宽上限：启用过热保护时，方案放宽后的触发温度不超过保护触发温度，
+    /// 避免放宽区间落在保护区间内（该区间实际由官方温控接管）
+    pub fn ceiling(&self) -> Option<f64> {
+        self.guard.enabled.then_some(self.guard.trip)
     }
 
     pub fn all_profiles(&self) -> Vec<Profile> {
         let mut v = builtins();
         v.extend(self.profiles.iter().cloned());
+        let ceiling = self.ceiling();
+        for p in &mut v {
+            p.ceiling = ceiling;
+        }
         v
+    }
+
+    /// 实际使用的 Joyose 调教参数（含放宽上限）
+    pub fn joyose_effective(&self) -> JoyoseConfig {
+        JoyoseConfig { ceiling: self.ceiling(), ..self.joyose.clone() }
     }
 
     pub fn find(&self, id: &str) -> Option<Profile> {
@@ -506,7 +560,7 @@ fn migrate_v1(text: &str) -> Option<Config> {
             "disable" => Mode::Disable,
             _ => Mode::Keep,
         };
-        p.categories.insert(k, CatRule { mode, offset: r.offset });
+        p.categories.insert(k, CatRule { mode, offset: r.offset, start: 0.0 });
     }
     for (f, text) in v1.manual {
         p.scenes.insert(f, SceneOverride { mode: SceneMode::Text, text });
@@ -514,21 +568,85 @@ fn migrate_v1(text: &str) -> Option<Config> {
     Some(Config { enabled: v1.enabled, active: "custom".into(), profiles: vec![p], immutable: v1.immutable, ..Config::default() })
 }
 
-fn shift(values: &[String], delta: i64) -> Vec<String> {
-    values.iter().map(|v| if conf::is_temp(v) { (v.parse::<i64>().unwrap() + delta).to_string() } else { v.clone() }).collect()
+/// 相邻档位压缩后的最小间隔（毫摄氏度）
+const MIN_STEP: f64 = 500.0;
+
+/// 温度映射：由一条规则的触发温度（毫摄氏度）、偏移、起控温度与放宽上限求出线性映射。
+/// 曲线首档不低于起控温度，末档推迟 offset，且（不低于官方末档的前提下）不超过放宽上限
+struct TempMap {
+    lo: f64,
+    hi: f64,
+    new_lo: f64,
+    new_hi: f64,
 }
 
-fn apply_category(sec: &Section, rule: &CatRule) -> Option<Section> {
+impl TempMap {
+    fn new(trig: &[f64], rule: &CatRule, ceiling: Option<f64>) -> Option<TempMap> {
+        let lo = trig.iter().cloned().fold(f64::INFINITY, f64::min);
+        let hi = trig.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+        if !lo.is_finite() {
+            return None;
+        }
+        let gap = MIN_STEP * (trig.len().saturating_sub(1)) as f64;
+        let off = rule.offset * 1000.0;
+        let (mut new_lo, mut new_hi) = (lo + off, hi + off);
+        let start = rule.start * 1000.0;
+        if rule.start > 0.0 && new_lo < start {
+            new_lo = start;
+            new_hi = new_hi.max(start + gap);
+        }
+        if let Some(c) = ceiling {
+            let cap = (c * 1000.0).max(hi);
+            if new_hi > cap {
+                new_hi = cap;
+                new_lo = new_lo.min((cap - gap).max(lo));
+            }
+        }
+        Some(TempMap { lo, hi, new_lo, new_hi })
+    }
+
+    fn map(&self, x: f64) -> f64 {
+        let y = if self.hi > self.lo { self.new_lo + (x - self.lo) * (self.new_hi - self.new_lo) / (self.hi - self.lo) } else { x + (self.new_lo - self.lo) };
+        (y / 100.0).round() * 100.0
+    }
+}
+
+fn temps(values: &[String]) -> Vec<f64> {
+    values.iter().filter(|v| conf::is_temp(v)).filter_map(|v| v.parse::<f64>().ok()).collect()
+}
+
+fn apply_category(sec: &Section, rule: &CatRule, ceiling: Option<f64>) -> Option<Section> {
     match rule.mode {
         Mode::Keep => Some(sec.clone()),
         Mode::Disable => None,
         Mode::Offset => {
-            let delta = (rule.offset * 1000.0).round() as i64;
             let sic = sec.algo() == "sic";
+            let trig = sec.get("trig").cloned().unwrap_or_default();
+            // SIC 规则的 target 也是温度，且首档用于开启控制，不适用起控温度
+            let r = if sic { CatRule { start: 0.0, ..rule.clone() } } else { rule.clone() };
+            let Some(m) = TempMap::new(&temps(&trig), &r, ceiling) else { return Some(sec.clone()) };
+            let fmt = |v: f64| format!("{}", v as i64);
             let mut out = sec.clone();
             for (k, v) in out.kv.iter_mut() {
-                if k == "trig" || k == "clr" || (sic && k == "target") {
-                    *v = shift(v, delta);
+                match k.as_str() {
+                    "trig" => *v = v.iter().map(|x| if conf::is_temp(x) { fmt(m.map(x.parse().unwrap())) } else { x.clone() }).collect(),
+                    // 解除温度保持与触发温度的原有回差
+                    "clr" => {
+                        *v = v
+                            .iter()
+                            .enumerate()
+                            .map(|(i, c)| match (trig.get(i).filter(|t| conf::is_temp(t)), conf::is_temp(c)) {
+                                (Some(t), true) => {
+                                    let t: f64 = t.parse().unwrap();
+                                    fmt(m.map(t) - (t - c.parse::<f64>().unwrap()))
+                                }
+                                (None, true) => fmt(m.map(c.parse().unwrap())),
+                                _ => c.clone(),
+                            })
+                            .collect()
+                    }
+                    "target" if sic => *v = v.iter().map(|x| if conf::is_temp(x) { fmt(m.map(x.parse().unwrap())) } else { x.clone() }).collect(),
+                    _ => {}
                 }
             }
             Some(out)
@@ -606,7 +724,7 @@ pub fn build_scene(profile: &Profile, stock: &Stock, file: &str) -> Option<Strin
             continue;
         }
         let Some(mut sec) = (match profile.categories.get(cat) {
-            Some(rule) => apply_category(&sec, rule),
+            Some(rule) => apply_category(&sec, rule, profile.ceiling),
             None => Some(sec),
         }) else {
             continue;
@@ -675,7 +793,7 @@ mod tests {
         let stock = builtins().into_iter().find(|p| p.id == STOCK_ID).unwrap();
         let o = cb.overlay(&stock);
         assert_eq!(o.id, "stock+charge");
-        assert_eq!(o.categories["charge"], CatRule { mode: Mode::Offset, offset: 4.0 });
+        assert_eq!(o.categories["charge"], CatRule { mode: Mode::Offset, offset: 4.0, start: 0.0 });
         assert!(o.rules["*#SIC-BAT"].disabled);
         // 方案自身更大的充电偏移保留
         let fast = builtins().into_iter().find(|p| p.id == "charging").unwrap();
@@ -684,7 +802,42 @@ mod tests {
         assert_eq!(cb.overlay(&p).categories["charge"].offset, 6.0);
         // 已移除充电规则的方案不变
         let mut d = stock.clone();
-        d.categories.insert("charge".into(), CatRule { mode: Mode::Disable, offset: 0.0 });
+        d.categories.insert("charge".into(), CatRule { mode: Mode::Disable, offset: 0.0, start: 0.0 });
         assert_eq!(cb.overlay(&d).categories["charge"].mode, Mode::Disable);
+    }
+
+    fn sec(trig: &str, clr: &str) -> Section {
+        let v = |s: &str| s.split_whitespace().map(String::from).collect::<Vec<_>>();
+        Section {
+            name: "SS-CPU2".into(),
+            kv: vec![
+                ("algo_type".into(), vec!["ss".into()]),
+                ("device".into(), vec!["cpu2".into()]),
+                ("trig".into(), v(trig)),
+                ("clr".into(), v(clr)),
+                ("target".into(), v("1 2 3 4")),
+            ],
+        }
+    }
+
+    #[test]
+    fn start_and_ceiling() {
+        let s = sec("25000 37000 42000 48000", "23000 34000 41000 47000");
+        let rule = CatRule { mode: Mode::Offset, offset: 8.0, start: 42.0 };
+        // 起控温度 42°C，末档推迟到 56°C
+        let o = apply_category(&s, &rule, None).unwrap();
+        assert_eq!(o.get("trig").unwrap(), &vec!["42000", "49300", "52300", "56000"]);
+        assert_eq!(o.get("clr").unwrap(), &vec!["40000", "46300", "51300", "55000"]);
+        // 过热保护 50°C：末档不超过 50°C
+        let o = apply_category(&s, &rule, Some(50.0)).unwrap();
+        assert_eq!(o.get("trig").unwrap().last().unwrap(), "50000");
+        assert_eq!(o.get("trig").unwrap()[0], "42000");
+        // 官方末档已高于上限时保持官方末档，不收紧
+        let hot = sec("52000", "50000");
+        let o = apply_category(&hot, &CatRule { mode: Mode::Offset, offset: 4.0, start: 0.0 }, Some(50.0)).unwrap();
+        assert_eq!(o.get("trig").unwrap(), &vec!["52000"]);
+        // 负偏移不受起控温度与上限影响
+        let o = apply_category(&s, &CatRule { mode: Mode::Offset, offset: -2.0, start: 0.0 }, Some(50.0)).unwrap();
+        assert_eq!(o.get("trig").unwrap(), &vec!["23000", "35000", "40000", "46000"]);
     }
 }

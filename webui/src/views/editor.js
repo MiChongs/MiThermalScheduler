@@ -43,10 +43,11 @@ function basicTab(app, d) {
     </div>
 
     <div class="section-head"><h2>分类策略</h2></div>
-    <p class="hint">「偏移」整体调整该类规则的触发 / 解除温度：正值更晚降频，负值更早降频。传感器定义与低电量保护（BCL）始终保留。</p>
+    <p class="hint">偏移：调整该类规则最高档的触发温度，正值推迟降频，负值提前降频。起控温度：官方部分规则自 15–25°C 起即常驻限频，设置后首档推迟到该温度，其余档位按比例分布。启用过热保护时，放宽后的触发温度不超过保护触发温度（当前 ${app.cfg.guard.enabled ? `${app.cfg.guard.trip}°C` : '未启用'}）。传感器定义与低电量保护（BCL）始终保留。</p>
     <div class="card-outlined">
       ${app.info.categories.map((c) => {
-        const r = (d.categories[c.id] ??= { mode: 'keep', offset: 0 });
+        const r = (d.categories[c.id] ??= { mode: 'keep', offset: 0, start: 0 });
+        const startable = !risky;
         const risky = c.id === 'charge' || c.id === 'warn';
         return html`<div class="cat-row">
           <div class="cat-head">
@@ -67,7 +68,14 @@ function basicTab(app, d) {
           ${when(r.mode === 'offset', () => html`<div class="slider-row">
             <md-slider min="-10" max="20" step="1" labeled .value=${r.offset} @input=${(e) => { r.offset = e.target.value; up(); }}></md-slider>
             <span class="slider-val">${r.offset > 0 ? '+' : ''}${r.offset}°C</span>
-          </div>`)}
+          </div>
+          ${when(startable, () => html`<label class="start-row">
+            <span>起控温度</span>
+            <select class="native-select" .value=${String(r.start || 0)} @change=${(e) => { r.start = Number(e.target.value); up(); }}>
+              <option value="0" ?selected=${!r.start}>不设置</option>
+              ${[34, 36, 38, 40, 42, 44, 46].map((t) => html`<option value=${String(t)} ?selected=${r.start === t}>${t}°C</option>`)}
+            </select>
+          </label>`)}`)}
         </div>`;
       })}
     </div>

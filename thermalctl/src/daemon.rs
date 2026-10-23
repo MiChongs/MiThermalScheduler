@@ -287,7 +287,7 @@ pub fn run() -> Result<()> {
         if joy_force || tick % 30 == 0 {
             joy_force = false;
             let _l = install::lock()?;
-            match joyose::sync(&cfg.joyose, module_disabled()) {
+            match joyose::sync(&cfg.joyose_effective(), module_disabled()) {
                 Ok(_) => st.joyose_error.clear(),
                 Err(e) => {
                     if st.joyose_error.is_empty() {

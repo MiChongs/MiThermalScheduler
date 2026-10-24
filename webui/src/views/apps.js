@@ -48,8 +48,8 @@ function renderAppList(app) {
 }
 
 function renderRefreshOptions(app) {
-  const rc = app.cfg.refresh ?? { enabled: true, respectGuard: true };
-  const ensure = (c) => (c.refresh ??= { enabled: true, respectGuard: true });
+  const rc = app.cfg.refresh ?? { enabled: true, respectGuard: false };
+  const ensure = (c) => (c.refresh ??= { enabled: true, respectGuard: false });
   const st = app.status?.daemon.state;
   return html`
     <div class="section-head"><h2>刷新率锁定</h2>${when(st?.refreshRate, () => html`<span class="tag accent">正在锁定 ${st.refreshRate} Hz</span>`)}</div>
@@ -66,7 +66,7 @@ function renderRefreshOptions(app) {
         <div class="avatar small">${icon('shield')}</div>
         <div class="grow">
           <div class="row-title">过热保护时暂停锁定</div>
-          <div class="row-sub">过热保护触发期间由系统管理刷新率</div>
+          <div class="row-sub">过热保护触发期间由系统管理刷新率，游戏可能被限制为 60 Hz</div>
         </div>
         <md-switch .selected=${rc.respectGuard} @change=${(e) => app.edit((c) => { ensure(c).respectGuard = e.target.selected; })}></md-switch>
       </label>

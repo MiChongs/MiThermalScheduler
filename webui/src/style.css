@@ -290,6 +290,7 @@ md-outlined-select.full { margin-bottom: 12px; }
 .slider-row { display: flex; align-items: center; gap: 4px; margin-top: 8px; }
 .slider-row md-slider { flex: 1; }
 .start-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 8px; font-size: 14px; color: var(--md-sys-color-on-surface-variant); }
+.mode-hint { margin-top: 6px; }
 .slider-val { min-width: 56px; text-align: right; font-weight: 500; color: var(--md-sys-color-primary); font-variant-numeric: tabular-nums; }
 .slider-block { padding: 4px 16px 16px; }
 .slider-block md-slider { width: 100%; }

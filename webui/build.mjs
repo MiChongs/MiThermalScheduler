@@ -8,7 +8,7 @@ close memory developer_board deployed_code neurology battery_charging_full batte
 mobile_off play_arrow info upload download restart_alt lock code more_vert search rule star arrow_upward
 arrow_downward warning visibility layers science schedule power_settings_new light_mode cell_tower more_horiz
 description save undo sensors rocket_launch nightlight favorite help radio_button_checked radio_button_unchecked
-chevron_right flash_on bug_report terminal swap_vert`.split(/\s+/);
+chevron_right flash_on bug_report terminal swap_vert contactless`.split(/\s+/);
 const dir = 'node_modules/@material-symbols/svg-400/rounded';
 const out = {};
 for (const name of ICONS) {

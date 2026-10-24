@@ -5,11 +5,22 @@ function summary(app, p) {
   if (p.id === 'stock') return ['不做任何修改'];
   const out = [];
   const names = Object.fromEntries(app.info.categories.map((c) => [c.id, c.name]));
-  for (const [id, r] of Object.entries(p.categories ?? {})) {
-    if (r.mode === 'offset' && r.start) out.push(`${names[id] ?? id} ${r.start}°C 起控`);
-    if (r.mode === 'offset' && r.offset) out.push(`${names[id] ?? id} ${r.offset > 0 ? '+' : ''}${r.offset}°C`);
-    if (r.mode === 'disable') out.push(`${names[id] ?? id} 已移除`);
-  }
+  const describe = (map, prefix) => {
+    const groups = {};
+    for (const [id, r] of Object.entries(map ?? {})) {
+      const n = names[id] ?? id;
+      let label = null;
+      if (r.mode === 'offset') label = [r.start ? `${r.start}°C 起控` : '', r.offset ? `${r.offset > 0 ? '+' : ''}${r.offset}°C` : ''].filter(Boolean).join('，') || null;
+      if (r.mode === 'first') label = '仅留首档';
+      if (r.mode === 'defer') label = r.value <= 20 ? '始终限制' : `${r.value}°C 起限制`;
+      if (r.mode === 'curve') label = '内置曲线';
+      if (r.mode === 'disable') label = '移除';
+      if (label) (groups[label] ??= []).push(n);
+    }
+    for (const [label, list] of Object.entries(groups)) out.push(`${prefix}${list.join('、')} ${label}`);
+  };
+  describe(p.categories, '');
+  describe(p.game, '游戏：');
   const floors = Object.values(p.cpuFloor ?? {}).filter(Boolean).length;
   if (floors) out.push(`${floors} 簇降频下限`);
   if (p.gpuMaxLevel != null) out.push(`GPU 等级 ≤ ${p.gpuMaxLevel}`);

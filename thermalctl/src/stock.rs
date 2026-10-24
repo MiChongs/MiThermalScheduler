@@ -112,9 +112,13 @@ impl Stock {
                 }
             }
         }
+        Ok(Stock::from_parts(map, scenes))
+    }
+
+    pub fn from_parts(map: BTreeMap<i32, String>, scenes: BTreeMap<String, String>) -> Stock {
         let mut prefixes: Vec<String> = scenes.keys().filter(|f| *f != "thermal-normal.conf").map(|f| scene_id(f).to_uppercase()).collect();
         prefixes.sort_by_key(|p| std::cmp::Reverse(p.len()));
-        Ok(Stock { map, scenes, prefixes })
+        Stock { map, scenes, prefixes }
     }
 
     /// 去掉段名中的场景前缀，例如 TGAME-SS-CPU7 -> SS-CPU7

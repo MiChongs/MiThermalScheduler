@@ -87,6 +87,37 @@ struct Inputs {
     foreground: Vec<String>,
 }
 
+/// 前台应用防抖：应用短暂离开 top-app（下拉通知栏、系统弹窗、加载过程）时继续视为前台，
+/// 连续 HOLD_TICKS 个检测周期未出现才视为离开，避免方案与刷新率锁定反复切换
+#[derive(Default)]
+struct ForegroundHold {
+    seen: Vec<(String, u8)>,
+}
+
+const HOLD_TICKS: u8 = 3;
+
+impl ForegroundHold {
+    fn update(&mut self, now: Vec<String>) -> Vec<String> {
+        if now.is_empty() {
+            // 熄屏或无需检测时立即清空
+            self.seen.clear();
+            return now;
+        }
+        for (pkg, miss) in self.seen.iter_mut() {
+            *miss = if now.contains(pkg) { 0 } else { miss.saturating_add(1) };
+        }
+        self.seen.retain(|(_, miss)| *miss <= HOLD_TICKS);
+        for p in &now {
+            if !self.seen.iter().any(|(s, _)| s == p) {
+                self.seen.push((p.clone(), 0));
+            }
+        }
+        let mut out = now;
+        out.extend(self.seen.iter().map(|(p, _)| p.clone()).filter(|p| !out.contains(p)).collect::<Vec<_>>());
+        out
+    }
+}
+
 struct Decision {
     profile: Profile,
     reason: String,
@@ -226,6 +257,7 @@ pub fn run() -> Result<()> {
     let mut saved = State::default();
     let mut rate_ctl = refresh::Controller::default();
     let mut joy_force = true;
+    let mut fg_hold = ForegroundHold::default();
 
     while !STOP.load(Ordering::SeqCst) {
         if RELOAD.swap(false, Ordering::SeqCst) || config_mtime() != mtime {
@@ -236,12 +268,9 @@ pub fn run() -> Result<()> {
             logln!("配置已重新加载");
         }
         let needs_fg = cfg.apps.iter().any(|a| a.enabled && ((cfg.enabled && !a.profile.is_empty()) || (cfg.refresh.enabled && a.refresh > 0)));
-        let inp = Inputs {
-            temp: system::board_temp(),
-            screen_on: system::screen_on(),
-            battery: system::battery(),
-            foreground: if needs_fg { system::foreground_packages() } else { Vec::new() },
-        };
+        let screen_on = system::screen_on();
+        let foreground = if needs_fg && screen_on { fg_hold.update(system::foreground_packages()) } else { fg_hold.update(Vec::new()) };
+        let inp = Inputs { temp: system::board_temp(), screen_on, battery: system::battery(), foreground };
         let mut d = decide(&cfg, &inp, &mut guard, &mut active_rules);
         // 充电加速：充电时（总开关开启、未触发过热保护）在当前方案之上放宽充电限流
         if cfg.enabled && cfg.charge.enabled && inp.battery.charging && !guard && !module_disabled() {

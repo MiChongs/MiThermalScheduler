@@ -7,9 +7,12 @@ export const icon = (name, cls = '') =>
 
 export const CAT_ICONS = {
   cpu: 'memory',
+  core: 'developer_board',
   gpu: 'deployed_code',
   npu: 'neurology',
   charge: 'battery_charging_full',
+  wireless: 'contactless',
+  boost: 'rocket_launch',
   display: 'light_mode',
   net: 'cell_tower',
   warn: 'warning',

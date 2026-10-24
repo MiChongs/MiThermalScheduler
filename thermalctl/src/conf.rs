@@ -75,25 +75,34 @@ pub fn serialize(secs: &[Section]) -> String {
 
 /// 可调节的规则分类；sensor（传感器定义）与 bcl（低电量保护）不在其中，始终原样保留
 pub const CATEGORIES: &[(&str, &str, &str)] = &[
-    ("cpu", "CPU", "各簇降频、关核（hotplug）、LMH"),
+    ("cpu", "CPU 频率", "各簇降频与 LMH 限制"),
+    ("core", "关核", "高温时关闭 CPU 核心（hotplug）"),
     ("gpu", "GPU", "GPU 频率等级限制"),
     ("npu", "NPU", "AI 计算单元（CDSP）限制"),
-    ("charge", "充电", "有线 / 无线充电电流限制"),
+    ("charge", "有线充电", "充电电流限制与 SIC 电流控制"),
+    ("wireless", "无线充电", "无线充电功率限制"),
     ("display", "屏幕亮度", "高温时限制最高亮度"),
-    ("net", "网络", "5G 回落、Wi-Fi 降速、并发下载"),
-    ("warn", "高温保护", "过热提示、关闭闪光灯与相机"),
-    ("other", "其他", "手电筒、通话、boost"),
+    ("net", "网络", "5G 回落、Wi-Fi 降速、并发下载、卫星通信"),
+    ("warn", "高温提示", "过热提示、关闭闪光灯与相机"),
+    ("boost", "加速限制", "高温时限制系统性能加速（boost）"),
+    ("other", "其他", "手电筒、通话音量等"),
 ];
 
 fn device_category(d: &str) -> &'static str {
-    if d.starts_with("cpu") || d.starts_with("hotplug_cpu") || d.starts_with("lmh_cpu") {
+    if d.starts_with("hotplug_cpu") {
+        "core"
+    } else if d.starts_with("cpu") || d.starts_with("lmh_cpu") {
         "cpu"
     } else if d.starts_with("gpu") {
         "gpu"
     } else if d.starts_with("cdsp") {
         "npu"
-    } else if matches!(d, "battery" | "thermal_fcc_override" | "wireless_charge" | "wls_limit") {
+    } else if matches!(d, "battery" | "thermal_fcc_override") {
         "charge"
+    } else if matches!(d, "wireless_charge" | "wls_limit") {
+        "wireless"
+    } else if d == "boost_limit" {
+        "boost"
     } else if d.contains("brightness") || d.contains("backlight") {
         "display"
     } else if ["modem", "wifi", "market_download", "ntn", "poor_modem", "pa_"].iter().any(|p| d.starts_with(p)) {

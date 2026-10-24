@@ -222,12 +222,12 @@ class App extends LitElement {
   }
 
   newProfile() {
-    this.openEditor({ id: uid('p'), name: '新方案', desc: '', icon: 'tune', risk: 0, lock: '', categories: {}, cpuFloor: {}, gpuMaxLevel: null, rules: {}, scenes: {} }, true);
+    this.openEditor({ id: uid('p'), name: '新方案', desc: '', icon: 'tune', risk: 0, lock: '', categories: {}, game: {}, cpuFloor: {}, gpuMaxLevel: null, rules: {}, scenes: {} }, true);
   }
 
   openEditor(profile, isNew) {
     const draft = clone(profile);
-    for (const k of ['categories', 'cpuFloor', 'rules', 'scenes']) draft[k] ??= {};
+    for (const k of ['categories', 'game', 'cpuFloor', 'rules', 'scenes']) draft[k] ??= {};
     this.editor = { draft, tab: 0, isNew };
     this.loadScenes();
     this.pushSheet({
@@ -245,7 +245,7 @@ class App extends LitElement {
       await this.ask({ title: '请填写方案名称', ok: '好', cancel: null });
       return false;
     }
-    const disabled = Object.entries(d.categories).filter(([, r]) => r.mode === 'disable').map(([k]) => k);
+    const disabled = [...Object.entries(d.categories), ...Object.entries(d.game)].filter(([, r]) => r.mode === 'disable').map(([k]) => k);
     d.risk = disabled.some((k) => ['cpu', 'gpu', 'charge', 'warn'].includes(k)) ? 2 : disabled.length || Object.keys(d.cpuFloor).length || Object.values(d.categories).some((r) => r.mode === 'offset' && r.offset >= 10) ? 1 : 0;
     for (const [k, r] of Object.entries(d.categories)) if (r.mode === 'keep') delete d.categories[k];
     delete d.builtin;
